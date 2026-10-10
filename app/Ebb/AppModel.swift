@@ -200,6 +200,89 @@ final class AppModel {
         }
     }
 
+    // MARK: Parent voice (ElevenLabs, via the voice function)
+
+    func voiceState(for child: Child) async -> VoiceState? {
+        await voiceCall {
+            try await self.client.functions.invoke(
+                "voice",
+                options: FunctionInvokeOptions(method: .get, query: [
+                    URLQueryItem(name: "action", value: "list"),
+                    URLQueryItem(name: "child_id", value: child.id.uuidString),
+                ])
+            )
+        }
+    }
+
+    /// Sends the recording straight to the voice function (it is not stored).
+    func cloneVoice(recording: Data) async -> Bool {
+        struct Ok: Decodable { let ok: Bool }
+        let result: Ok? = await voiceCall {
+            try await self.client.functions.invoke(
+                "voice",
+                options: FunctionInvokeOptions(
+                    method: .post,
+                    query: [URLQueryItem(name: "action", value: "clone"), URLQueryItem(name: "consent", value: "1")],
+                    headers: ["Content-Type": "audio/mp4"],
+                    body: recording
+                )
+            )
+        }
+        return result?.ok == true
+    }
+
+    func makeVoiceClips(for child: Child, phrases: [String]) async -> [VoiceClip]? {
+        struct Request: Encodable { let child_id: UUID; let phrases: [String] }
+        struct Response: Decodable { let clips: [VoiceClip] }
+        let response: Response? = await voiceCall {
+            try await self.client.functions.invoke(
+                "voice",
+                options: FunctionInvokeOptions(
+                    query: [URLQueryItem(name: "action", value: "generate")],
+                    body: Request(child_id: child.id, phrases: phrases)
+                )
+            )
+        }
+        return response?.clips
+    }
+
+    /// Approved clips reach the watch within a few minutes.
+    func setClip(_ clip: VoiceClip, approved: Bool) async -> Bool {
+        struct Change: Encodable { let status: String; let approved_at: Date? }
+        var ok = false
+        await run {
+            try await self.client.from("voice_clips")
+                .update(Change(status: approved ? "approved" : "draft", approved_at: approved ? Date() : nil))
+                .eq("id", value: clip.id)
+                .execute()
+            ok = true
+        }
+        return ok
+    }
+
+    func deleteVoice() async -> Bool {
+        struct Ok: Decodable { let ok: Bool }
+        let result: Ok? = await voiceCall {
+            try await self.client.functions.invoke(
+                "voice",
+                options: FunctionInvokeOptions(query: [URLQueryItem(name: "action", value: "delete_voice")], body: [String: String]())
+            )
+        }
+        return result?.ok == true
+    }
+
+    /// Runs a voice function call; its {"error": "..."} replies become errorMessage.
+    private func voiceCall<T>(_ work: @escaping () async throws -> T) async -> T? {
+        do {
+            return try await work()
+        } catch let FunctionsError.httpError(_, data) {
+            errorMessage = (try? JSONDecoder().decode(FunctionError.self, from: data))?.error ?? "Voice request failed."
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        return nil
+    }
+
     // MARK: Children and pairing
 
     func addChild(nickname: String, ageBand: AgeBand) async -> Child? {
@@ -316,6 +399,9 @@ final class AppModel {
         }
     }
 }
+
+/// The {"error": "..."} body our Edge Functions return on failure.
+private struct FunctionError: Decodable { let error: String }
 
 /// Local notifications for calm alerts. They show while the app is open or
 /// recently backgrounded; alerts with the app fully closed would need APNs push.

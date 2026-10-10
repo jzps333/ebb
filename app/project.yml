@@ -28,5 +28,6 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Ebb
         INFOPLIST_KEY_NSCameraUsageDescription: "Ebb uses the camera to scan the QR code on the watch."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Ebb records your voice once so your child's watch can say calming phrases in it."
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait

@@ -13,6 +13,7 @@
 		68BDDBA5FB68F7758193E342 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D369C2595ACC2B42995E7FD /* Models.swift */; };
 		763CE23A2E4133D4C2D19555 /* PairView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8516F308A385E28E8444DCBD /* PairView.swift */; };
 		80F72F1B11719DF71A4AA429 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100B18614FCEECE78AB428E /* HomeView.swift */; };
+		933AA46E4B502533D12DFD3C /* VoiceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE6C86881385D5F886B0C207 /* VoiceView.swift */; };
 		AAD520A30D167C11C4567DFF /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01DFA7BD92DB28B55C251156 /* LoginView.swift */; };
 		C3C8320E925F9777E323C303 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C233FAEB373C24F203BBB5 /* AppModel.swift */; };
 		D569A223FCB24EA5D2A9A201 /* AssessmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D580F65A45449959E70B3C64 /* AssessmentView.swift */; };
@@ -32,6 +33,7 @@
 		CC2604493591535B7C9C79FC /* Ebb.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Ebb.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D580F65A45449959E70B3C64 /* AssessmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssessmentView.swift; sourceTree = "<group>"; };
 		ED5CA223F4EFCA52A1C5DB4B /* EbbApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EbbApp.swift; sourceTree = "<group>"; };
+		FE6C86881385D5F886B0C207 /* VoiceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -75,6 +77,7 @@
 				8D369C2595ACC2B42995E7FD /* Models.swift */,
 				8516F308A385E28E8444DCBD /* PairView.swift */,
 				1993824FB0E8887853F8C371 /* QRScannerView.swift */,
+				FE6C86881385D5F886B0C207 /* VoiceView.swift */,
 			);
 			path = Ebb;
 			sourceTree = "<group>";
@@ -153,6 +156,7 @@
 				68BDDBA5FB68F7758193E342 /* Models.swift in Sources */,
 				763CE23A2E4133D4C2D19555 /* PairView.swift in Sources */,
 				4F05662AC9174AD8C4E7B1C9 /* QRScannerView.swift in Sources */,
+				933AA46E4B502533D12DFD3C /* VoiceView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -170,6 +174,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Ebb;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Ebb uses the camera to scan the QR code on the watch.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Ebb records your voice once so your child's watch can say calming phrases in it.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -195,6 +200,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Ebb;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Ebb uses the camera to scan the QR code on the watch.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Ebb records your voice once so your child's watch can say calming phrases in it.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (

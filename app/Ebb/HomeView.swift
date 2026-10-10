@@ -98,6 +98,11 @@ struct ChildCard: View {
                 } label: {
                     Label(profileStatus, systemImage: "slider.horizontal.3")
                 }
+                NavigationLink {
+                    VoiceView(child: child)
+                } label: {
+                    Label("Your voice on the watch", systemImage: "waveform")
+                }
             }
         }
     }

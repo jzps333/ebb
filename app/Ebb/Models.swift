@@ -170,3 +170,24 @@ struct NewAssessment: Encodable {
     let child_id: UUID
     let answers: AssessmentAnswers
 }
+
+// MARK: Parent voice
+
+struct VoiceClip: Decodable, Identifiable, Hashable {
+    let id: UUID
+    let phrase: String
+    var status: String  // "draft" or "approved"
+    let url: URL?
+
+    var isApproved: Bool { status == "approved" }
+}
+
+struct VoiceState: Decodable {
+    let hasVoice: Bool
+    let clips: [VoiceClip]
+
+    enum CodingKeys: String, CodingKey {
+        case clips
+        case hasVoice = "has_voice"
+    }
+}

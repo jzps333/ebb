@@ -17,3 +17,10 @@ Ebb is designed around COPPA (US children's privacy rule) from day one, because 
 - The microphone only computes a loudness number on the watch. No audio is ever recorded or sent.
 - `ANTHROPIC_API_KEY` and the Supabase secret key live only in Supabase function secrets. The website uses only the publishable key. The watch holds only its own device token; the database stores only its hash.
 - Parents approve every AI profile before it reaches the watch.
+
+## Parent voice (ElevenLabs)
+- Only a parent can clone a voice, only their own, after ticking a consent box in the app (time stored in `parent_voices.consent_at`).
+- The recording goes from the app straight to ElevenLabs through the `voice` function. It is never stored by Ebb, and the app deletes its copy after upload.
+- Ebb keeps only the ElevenLabs voice id and the short phrase clips the parent made. Clips sit in a private bucket and reach the watch only after the parent approves each one, through signed links that expire in an hour.
+- Teachers never see voice data.
+- "Delete my voice" in the app removes the voice at ElevenLabs and every clip. **Known gap:** deleting a child or the parent account does not yet run that cleanup, so delete the voice in the app first.
