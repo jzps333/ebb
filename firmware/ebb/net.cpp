@@ -4,6 +4,7 @@
 #include "net.h"
 #include "config.h"
 #include "secrets.h"
+#include "ca_certs.h"
 
 // One client of each kind, reused between calls so HTTPS does not redo the
 // slow TLS handshake every 3 seconds when the server keeps the connection open.
@@ -23,10 +24,9 @@ void net_begin()
     // Real clock for event timestamps, in UTC. Syncs on its own once WiFi is up.
     configTime(0, 0, "pool.ntp.org", "time.google.com");
 
-    // HACKATHON SHORTCUT: skips checking the server's certificate, so the
-    // connection is encrypted but not verified. Before a real pilot, replace
-    // with secure_client.setCACert(<root CA of your Supabase host>).
-    secure_client.setInsecure();
+    // Only trust servers whose certificate chains to one of these roots, so
+    // nobody on the WiFi can pretend to be Supabase and steal the device token.
+    secure_client.setCACert(ROOT_CA_BUNDLE);
 
     http.setReuse(true);
     http.setTimeout(HTTP_TIMEOUT_MS);
