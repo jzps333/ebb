@@ -1,0 +1,32 @@
+# Generates Ebb.xcodeproj. After editing this file run: xcodegen generate
+name: Ebb
+options:
+  bundleIdPrefix: com.jzps333
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  Supabase:
+    url: https://github.com/supabase/supabase-swift
+    from: 2.0.0
+targets:
+  Ebb:
+    type: application
+    platform: iOS
+    sources: [Ebb]
+    dependencies:
+      - package: Supabase
+        product: Supabase
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jzps333.ebb
+        DEVELOPMENT_TEAM: W9UDHQ6R9V   # Vineet's free personal team; change in Signing & Capabilities if needed
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Ebb
+        INFOPLIST_KEY_NSCameraUsageDescription: "Ebb uses the camera to scan the QR code on the watch."
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
