@@ -5,6 +5,8 @@
 #include "calm_mode.h"
 #include "commands.h"
 #include "pairing.h"
+#include "profile_store.h"
+#include "audio_player.h"
 
 // Temporary home screen until the ui module exists: a Start button, a status
 // line for WiFi/polling, and Serial shortcuts 's' / 'x' for start/stop.
@@ -85,6 +87,8 @@ void setup()
     beginLvglHelper();
 
     build_home_screen();
+    profile_store_begin();
+    audio_begin();
     calm_mode_init();
     pairing_begin(lv_scr_act());  // before commands_begin: loads the device token
     commands_begin();

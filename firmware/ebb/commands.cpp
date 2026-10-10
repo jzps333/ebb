@@ -5,6 +5,8 @@
 #include "calm_mode.h"
 #include "event_log.h"
 #include "pairing.h"
+#include "profile_store.h"
+#include "media.h"
 
 enum CommandType : uint8_t { CMD_START_CALM, CMD_STOP_CALM };
 
@@ -19,8 +21,6 @@ static TaskHandle_t  poll_task_handle = NULL;
 static volatile int      last_http_code = 0;
 static volatile uint32_t last_poll_ms   = 0;
 
-// Until profile_store exists we have no saved profile, so report version 0.
-static int current_profile_version = 0;
 
 // Parses: { "commands": [ { "id": "…", "type": "start_calm" } ], "profile": null }
 static void parse_poll_response(const String &body)
@@ -48,7 +48,12 @@ static void parse_poll_response(const String &body)
         strlcpy(cmd.id, id, sizeof(cmd.id));
         xQueueSend(cmd_queue, &cmd, 0);
     }
-    // doc["profile"] is handled later by profile_store.
+    // A newer approved calm profile (null when ours is current).
+    if (!doc["profile"].isNull()) {
+        String json;
+        serializeJson(doc["profile"], json);
+        profile_store_save_json(json);  // then media_sync fetches its video and sound
+    }
 }
 
 static void poll_task(void *arg)
@@ -64,13 +69,14 @@ static void poll_task(void *arg)
         if (net_has_token()) {
             event_log_flush();  // calm start/end reports go out first: they fire the alerts
 
-            String path = String("/device-api/poll?profile_version=") + current_profile_version;
+            String path = String("/device-api/poll?profile_version=") + profile_store_version();
             int code = net_get(path, body);
             last_http_code = code;
             last_poll_ms   = millis();
 
             if (code == 200) {
                 parse_poll_response(body);
+                media_sync();  // fetch the profile's scene video and sound if missing
             } else if (code != -100 && code != -102) {  // WiFi / clock not ready yet: not worth logging
                 Serial.printf("[commands] poll failed: %d %s\n", code, body.c_str());
             }

@@ -12,6 +12,11 @@ void net_begin();
 void net_set_token(const char *token);
 bool net_has_token();
 
+// Downloads a full URL (no auth header) into flash at dest_path, via a
+// temporary file so a failed download never leaves half a file behind.
+// Returns the HTTP status (200 = saved) or a negative error.
+int net_download(const String &url, const char *dest_path);
+
 // True once NTP has set the real time (needed before any HTTPS call).
 bool net_clock_ready();
 bool net_connected();      // also kicks a reconnect if WiFi has been down a while

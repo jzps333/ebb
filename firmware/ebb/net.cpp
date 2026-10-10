@@ -6,6 +6,7 @@
 #include "config.h"
 #include "secrets.h"
 #include "ca_certs.h"
+#include <FFat.h>
 
 // One client of each kind, reused between calls so HTTPS does not redo the
 // slow TLS handshake every 3 seconds when the server keeps the connection open.
@@ -154,4 +155,38 @@ int net_post(const String &path, const String &json_body, String &body_out)
     if (!open_request(path)) return -101;
     http.addHeader("Content-Type", "application/json");
     return finish_request(http.POST(json_body), body_out);
+}
+
+int net_download(const String &url, const char *dest_path)
+{
+    if (!net_connected()) return -100;
+    if (url.startsWith("https://") && !net_clock_ready()) return -102;
+
+    bool ok = url.startsWith("https://") ? http.begin(secure_client, url) : http.begin(plain_client, url);
+    if (!ok) return -101;
+    int code = http.GET();
+    if (code != 200) {
+        log_tls_error(code);
+        http.end();
+        return code;
+    }
+
+    String tmp = String(dest_path) + ".part";
+    File f = FFat.open(tmp, FILE_WRITE);
+    if (!f) {
+        http.end();
+        return -103;
+    }
+    int expected = http.getSize();
+    int written = http.writeToStream(&f);
+    f.close();
+    http.end();
+
+    if (written <= 0 || (expected > 0 && written != expected)) {
+        FFat.remove(tmp);
+        return -104;
+    }
+    FFat.remove(dest_path);
+    FFat.rename(tmp, dest_path);
+    return 200;
 }
