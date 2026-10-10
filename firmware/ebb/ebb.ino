@@ -7,11 +7,10 @@
 #include "pairing.h"
 #include "profile_store.h"
 #include "audio_player.h"
+#include "voice.h"
 
-// Temporary home screen until the ui module exists: a Start button, a status
-// line for WiFi/polling, and Serial shortcuts 's' / 'x' for start/stop.
-
-static lv_obj_t *status_label = NULL;
+// Temporary home screen until the ui module exists: a Start button, and
+// Serial shortcuts 's' / 'x' for start/stop. Connection details are on Serial.
 
 // LVGL event callbacks must have this exact signature.
 static void start_btn_cb(lv_event_t *e)
@@ -36,32 +35,6 @@ static void build_home_screen()
     lv_obj_t *btn_label = lv_label_create(btn);
     lv_label_set_text(btn_label, "Start calm");
     lv_obj_center(btn_label);
-
-    status_label = lv_label_create(scr);
-    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_14, 0);
-    lv_obj_align(status_label, LV_ALIGN_BOTTOM_MID, 0, -10);
-    lv_label_set_text(status_label, "WiFi: connecting...");
-}
-
-// Runs on the main loop (same task as LVGL), so it may touch labels safely.
-static void update_status_label()
-{
-    static uint32_t last = 0;
-    if (millis() - last < 500) return;
-    last = millis();
-
-    if (WiFi.status() != WL_CONNECTED) {
-        lv_label_set_text(status_label, "WiFi: connecting...");
-        return;
-    }
-    int code = commands_last_http_code();
-    uint32_t ago = (millis() - commands_last_poll_ms()) / 1000;
-    if (code == 0) {
-        lv_label_set_text_fmt(status_label, "%s  poll: waiting", WiFi.localIP().toString().c_str());
-    } else {
-        lv_label_set_text_fmt(status_label, "%s  poll: %d (%lus ago)",
-                              WiFi.localIP().toString().c_str(), code, (unsigned long)ago);
-    }
 }
 
 static void handle_serial()
@@ -89,6 +62,7 @@ void setup()
     build_home_screen();
     profile_store_begin();
     audio_begin();
+    voice_begin();
     calm_mode_init();
     pairing_begin(lv_scr_act());  // before commands_begin: loads the device token
     commands_begin();
@@ -101,7 +75,6 @@ void loop()
     handle_serial();
     commands_handle();
     pairing_ui_update();
-    update_status_label();
     lv_task_handler();
     delay(5);
 }

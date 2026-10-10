@@ -5,6 +5,7 @@
 #include "profile_store.h"
 #include "media.h"
 #include "audio_player.h"
+#include "voice.h"
 
 // Calm mode follows the approved calm profile (profile_store):
 //   theme          -> looping scene video in the background (/video/<theme>.gif)
@@ -20,6 +21,9 @@ static const int32_t CIRCLE_MIN_PX = 70;    // diameter at end of breath out
 static const int32_t CIRCLE_MAX_PX = 200;   // diameter at end of breath in (screen is 240)
 static const uint8_t HAPTIC_GENTLE = 7;     // DRV2605 library effect "Soft Bump - 100%"
 static const uint8_t HAPTIC_MEDIUM = 47;    // "Buzz 1 - 100%"
+static const int     VOICE_EVERY_BREATHS = 3;      // parent's voice on every 3rd breath in
+static const uint32_t VOICE_EVERY_MS_NO_BREATH = 20000;  // ...or every 20 s with no breathing guide
+static const float   VOICE_GAIN = 0.2f;
 
 // One step of a breathing pattern. grow: +1 breathe in, -1 breathe out, 0 hold.
 struct BreathStep {
@@ -43,11 +47,26 @@ static lv_obj_t *prev_scr      = NULL;  // whatever was showing before start_cal
 static bool      running       = false;
 static lv_timer_t *limit_timer = NULL;  // ends calm mode after CALM_MAX_MS
 static lv_timer_t *step_timer  = NULL;  // advances to the next breathing step
+static lv_timer_t *voice_timer = NULL;  // voice clips when there is no breathing guide
+static int         breaths     = 0;
 
 static CalmProfile        profile;
 static const BreathStep  *steps = NULL;
 static size_t             step_count = 0;
 static size_t             step_index = 0;
+
+// The parent's voice, quietly, between breaths. The scene sound pauses for
+// the clip and comes back after it.
+static void maybe_say_something()
+{
+    char path[64];  // "/voice/" + 36-char id + ".mp3"
+    if (voice_next_clip(path, sizeof(path))) audio_play_once(path, VOICE_GAIN);
+}
+
+static void voice_timer_cb(lv_timer_t *t)
+{
+    maybe_say_something();
+}
 
 static void haptic_pulse()
 {
@@ -82,7 +101,11 @@ static void run_step()
         lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
         lv_anim_start(&a);
     }
-    if (s.grow > 0) haptic_pulse();  // a pulse on each breath in
+    if (s.grow > 0) {
+        haptic_pulse();  // a pulse on each breath in
+        // Start of every 3rd breath in after the first: the parent's voice.
+        if (++breaths % VOICE_EVERY_BREATHS == 0) maybe_say_something();
+    }
 
     lv_timer_set_period(step_timer, s.ms);
     lv_timer_reset(step_timer);
@@ -158,6 +181,8 @@ void calm_mode_init()
 
     step_timer = lv_timer_create(step_timer_cb, 4000, NULL);
     lv_timer_pause(step_timer);
+    voice_timer = lv_timer_create(voice_timer_cb, VOICE_EVERY_MS_NO_BREATH, NULL);
+    lv_timer_pause(voice_timer);
 }
 
 void start_calm(const char *trigger, const char *command_id)
@@ -194,6 +219,7 @@ void start_calm(const char *trigger, const char *command_id)
         lv_obj_clear_flag(hint_label, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_size(circle, CIRCLE_MIN_PX, CIRCLE_MIN_PX);
         step_index = 0;
+        breaths = 0;
         lv_timer_resume(step_timer);
         run_step();  // the first breath in starts right now
     } else {
@@ -201,6 +227,8 @@ void start_calm(const char *trigger, const char *command_id)
         lv_obj_add_flag(circle, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(hint_label, LV_OBJ_FLAG_HIDDEN);
         haptic_pulse();  // one gentle "I'm here" pulse, unless vibration is off
+        lv_timer_reset(voice_timer);
+        lv_timer_resume(voice_timer);
     }
 
     float gain = volume_gain(profile.volume);
@@ -220,6 +248,7 @@ void stop_calm()
         limit_timer = NULL;
     }
     lv_timer_pause(step_timer);
+    lv_timer_pause(voice_timer);
     event_log_ended();
 
     lv_anim_del(circle, size_cb);

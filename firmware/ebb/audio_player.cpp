@@ -12,12 +12,16 @@ static AudioFileSourceFS *file = nullptr;
 static AudioGeneratorMP3 *mp3  = nullptr;
 
 // What the main loop asked for; the audio task acts on it.
-static char         want_path[40] = "";
+static char         want_path[64] = "";
 static float        want_gain = 0;
+static bool         want_once = false;
 static volatile bool request_pending = false;
 static portMUX_TYPE req_mux = portMUX_INITIALIZER_UNLOCKED;
 
-static char playing_path[40] = "";
+static char  playing_path[64] = "";
+static bool  playing_once = false;
+static char  loop_path[64] = "";   // the scene sound to come back to after a one-off clip
+static float loop_gain = 0;
 
 static void stop_now()
 {
@@ -29,9 +33,10 @@ static void stop_now()
     playing_path[0] = '\0';
 }
 
-static void start_now(const char *path, float gain)
+static void start_now(const char *path, float gain, bool once = false)
 {
     stop_now();
+    playing_once = once;
     if (!path[0] || !FFat.exists(path)) return;
     file = new AudioFileSourceFS(FFat, path);
     out->SetGain(gain);
@@ -42,23 +47,29 @@ static void audio_task(void *)
 {
     for (;;) {
         if (request_pending) {
-            char path[40];
+            char path[64];
             float gain;
+            bool once;
             taskENTER_CRITICAL(&req_mux);
             strlcpy(path, want_path, sizeof(path));
             gain = want_gain;
+            once = want_once;
             request_pending = false;
             taskEXIT_CRITICAL(&req_mux);
-            start_now(path, gain);
+            if (!once) {
+                strlcpy(loop_path, path, sizeof(loop_path));  // "" = stop everything
+                loop_gain = gain;
+            }
+            start_now(path, gain, once);
         }
 
         if (mp3->isRunning()) {
             if (!mp3->loop()) {
-                // End of file: play it again from the start (the clips are
-                // made to loop, so the seam is a cross-fade, not a jump).
-                char path[40];
-                strlcpy(path, playing_path, sizeof(path));
-                start_now(path, want_gain);
+                // End of file. A one-off clip hands back to the scene sound;
+                // the scene sound itself starts again (its seam is a cross-fade).
+                char path[64];
+                strlcpy(path, loop_path, sizeof(path));
+                start_now(path, loop_gain);
             }
             vTaskDelay(1);
         } else {
@@ -77,11 +88,12 @@ void audio_begin()
     xTaskCreatePinnedToCore(audio_task, "audio", 8192, nullptr, 3, nullptr, 0);
 }
 
-static void request(const char *path, float gain)
+static void request(const char *path, float gain, bool once = false)
 {
     taskENTER_CRITICAL(&req_mux);
     strlcpy(want_path, path, sizeof(want_path));
     want_gain = gain;
+    want_once = once;
     request_pending = true;
     taskEXIT_CRITICAL(&req_mux);
 }
@@ -94,4 +106,9 @@ void audio_play_loop(const char *path, float gain)
 void audio_stop()
 {
     request("", 0);
+}
+
+void audio_play_once(const char *path, float gain)
+{
+    request(path, gain, true);
 }

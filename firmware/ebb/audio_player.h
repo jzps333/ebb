@@ -9,3 +9,7 @@ void audio_begin();
 // so calm mode uses about 0.05-0.2). Restarts if something else is playing.
 void audio_play_loop(const char *path, float gain);
 void audio_stop();
+
+// Main loop. Plays path once (e.g. a voice clip), pausing the looping sound,
+// then resumes the loop if one was playing. gain is for the clip.
+void audio_play_once(const char *path, float gain);

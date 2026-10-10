@@ -27,6 +27,11 @@
 //   { "calm_active": true, "battery_pct": 82, "firmware_version": "0.3.0" }
 //   -> { "ok": true }
 //
+// GET  /functions/v1/device-api/voice
+//   -> { "clips": [ { "id": "…", "url": "<signed, 1 h>" } ] }
+//      The parent-approved voice clips for this watch's child, from the private
+//      voice-clips bucket. The watch downloads new ones and drops removed ones.
+//
 // Pairing (no Authorization header: the watch has no token yet)
 // POST /functions/v1/device-api/pair/start   { "hardware_id": "…" }
 //   -> { "code": "<20 chars>", "secret": "<64 hex>", "expires_in": 900 }
@@ -239,6 +244,22 @@ async function status(device: Device, req: Request): Promise<Response> {
   return json({ ok: true });
 }
 
+async function voice(device: Device): Promise<Response> {
+  if (!device.child_id) return json({ clips: [] });
+  const { data: rows, error } = await supabase
+    .from("voice_clips")
+    .select("id, storage_path")
+    .eq("child_id", device.child_id)
+    .eq("status", "approved")
+    .order("created_at");
+  if (error) throw error;
+  const clips = await Promise.all((rows ?? []).map(async (r) => {
+    const { data } = await supabase.storage.from("voice-clips").createSignedUrl(r.storage_path, 3600);
+    return { id: r.id, url: data?.signedUrl ?? null };
+  }));
+  return json({ clips: clips.filter((c) => c.url) });
+}
+
 async function readJson(req: Request): Promise<Record<string, unknown> | null> {
   try {
     const body = await req.json();
@@ -342,6 +363,7 @@ Deno.serve(async (req) => {
     if (route === "poll" && req.method === "GET") return await poll(device, url);
     if (route === "events" && req.method === "POST") return await events(device, req);
     if (route === "status" && req.method === "POST") return await status(device, req);
+    if (route === "voice" && req.method === "GET") return await voice(device);
     return json({ error: "not found" }, 404);
   } catch (err) {
     const e = err as { name?: string; code?: string };
