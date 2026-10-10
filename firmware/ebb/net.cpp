@@ -20,6 +20,9 @@ void net_begin()
     WiFi.begin(WIFI_SSID, WIFI_PASS);
     last_wifi_attempt = millis();
 
+    // Real clock for event timestamps, in UTC. Syncs on its own once WiFi is up.
+    configTime(0, 0, "pool.ntp.org", "time.google.com");
+
     // HACKATHON SHORTCUT: skips checking the server's certificate, so the
     // connection is encrypted but not verified. Before a real pilot, replace
     // with secure_client.setCACert(<root CA of your Supabase host>).

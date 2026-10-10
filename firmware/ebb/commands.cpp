@@ -3,6 +3,7 @@
 #include "net.h"
 #include "config.h"
 #include "calm_mode.h"
+#include "event_log.h"
 
 enum CommandType : uint8_t { CMD_START_CALM, CMD_STOP_CALM };
 
@@ -12,6 +13,7 @@ struct Command {
 };
 
 static QueueHandle_t cmd_queue = NULL;
+static TaskHandle_t  poll_task_handle = NULL;
 
 static volatile int      last_http_code = 0;
 static volatile uint32_t last_poll_ms   = 0;
@@ -54,6 +56,8 @@ static void poll_task(void *arg)
     for (;;) {
         uint32_t started = millis();
 
+        event_log_flush();  // calm start/end reports go out first: they fire the alerts
+
         String path = String("/device-api/poll?profile_version=") + current_profile_version;
         int code = net_get(path, body);
         last_http_code = code;
@@ -66,8 +70,9 @@ static void poll_task(void *arg)
         }
 
         // Keep a steady 3 s rhythm even if the request itself took a while.
+        // commands_wake() cuts the wait short (e.g. a calm report to send).
         uint32_t spent = millis() - started;
-        vTaskDelay(pdMS_TO_TICKS(spent < POLL_INTERVAL_MS ? POLL_INTERVAL_MS - spent : 0));
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(spent < POLL_INTERVAL_MS ? POLL_INTERVAL_MS - spent : 0));
     }
 }
 
@@ -76,7 +81,7 @@ void commands_begin()
     net_begin();
     cmd_queue = xQueueCreate(8, sizeof(Command));
     // 16 KB stack: TLS needs a lot. Core 0, so the UI on core 1 never waits on the network.
-    xTaskCreatePinnedToCore(poll_task, "cmd_poll", 16384, NULL, 1, NULL, 0);
+    xTaskCreatePinnedToCore(poll_task, "cmd_poll", 16384, NULL, 1, &poll_task_handle, 0);
 }
 
 void commands_handle()
@@ -85,12 +90,17 @@ void commands_handle()
     while (xQueueReceive(cmd_queue, &cmd, 0) == pdTRUE) {
         if (cmd.type == CMD_START_CALM) {
             Serial.printf("[commands] start_calm (%s)\n", cmd.id);
-            start_calm();
+            start_calm("teacher", cmd.id);
         } else {
             Serial.printf("[commands] stop_calm (%s)\n", cmd.id);
             stop_calm();
         }
     }
+}
+
+void commands_wake()
+{
+    if (poll_task_handle) xTaskNotifyGive(poll_task_handle);
 }
 
 int commands_last_http_code()

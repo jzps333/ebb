@@ -8,6 +8,7 @@
 
 void commands_begin();
 void commands_handle();          // call every loop()
+void commands_wake();            // run the network task now instead of waiting up to 3 s
 
 // For a status line on screen / Serial.
 int      commands_last_http_code();  // 0 = no poll yet, <0 = network error

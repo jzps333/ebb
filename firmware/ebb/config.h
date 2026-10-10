@@ -11,3 +11,6 @@
 #define POLL_INTERVAL_MS      3000   // how often commands asks device-api/poll
 #define HTTP_TIMEOUT_MS       5000   // give up on a request after this long
 #define WIFI_RETRY_MS         10000  // wait this long before re-calling WiFi.begin()
+
+#define CALM_MAX_MS           (3UL * 60 * 1000)  // calm mode ends by itself after 3 minutes
+#define EVENT_QUEUE_SIZE      20     // calm reports kept while offline

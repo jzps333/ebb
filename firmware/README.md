@@ -26,10 +26,10 @@ Screen upside down or sideways? Change `SCREEN_ROTATION` in `ebb/config.h` (0–
 ## Modules
 | Module | Job | Status |
 |---|---|---|
-| `calm_mode` | Breathing circle, vibration on each breath in | built |
+| `calm_mode` | Breathing circle, vibration on each breath in, ends after 3 min | built |
 | `net` | WiFi + HTTP(S) to device-api | built |
 | `commands` | Polls `device-api/poll` every 3 s, runs start/stop | built |
-| `event_log` | Posts session start/end; queues offline | stub |
+| `event_log` | Posts session start/end; queues offline | built |
 | `profile_store` | Saves approved profile in flash | stub |
 | `motion`, `noise`, `trigger_rules` | Automatic triggers | stub |
 | `ui` | Themed home screen, "I need calm" / "I'm OK" | stub |

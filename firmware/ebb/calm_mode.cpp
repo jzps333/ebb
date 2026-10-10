@@ -1,5 +1,7 @@
 #include <LilyGoLib.h>
 #include "calm_mode.h"
+#include "event_log.h"
+#include "config.h"
 
 // ---- Tuning knobs ----------------------------------------------------------
 static const uint32_t BREATH_IN_MS  = 4000;  // circle grows for this long
@@ -14,6 +16,7 @@ static lv_obj_t *circle     = NULL;
 static lv_obj_t *hint_label = NULL;
 static lv_obj_t *prev_scr   = NULL;  // whatever was showing before start_calm()
 static bool      running    = false;
+static lv_timer_t *limit_timer = NULL;  // ends calm mode after CALM_MAX_MS
 
 static int32_t last_size = 0;
 static bool    growing   = true;
@@ -40,6 +43,12 @@ static void breath_anim_cb(void *obj, int32_t size)
         lv_label_set_text(hint_label, "Breathe out");
     }
     last_size = size;
+}
+
+static void limit_timer_cb(lv_timer_t *t)
+{
+    Serial.println("[calm_mode] 3-minute limit reached");
+    stop_calm();
 }
 
 // Tap anywhere on the calm screen to stop.
@@ -70,10 +79,12 @@ void calm_mode_init()
     lv_obj_align(hint_label, LV_ALIGN_BOTTOM_MID, 0, -6);
 }
 
-void start_calm()
+void start_calm(const char *trigger, const char *command_id)
 {
     if (running || !calm_scr) return;
     running = true;
+    event_log_started(trigger, command_id);
+    limit_timer = lv_timer_create(limit_timer_cb, CALM_MAX_MS, NULL);
 
     prev_scr = lv_scr_act();
     lv_scr_load(calm_scr);
@@ -100,6 +111,12 @@ void stop_calm()
 {
     if (!running) return;
     running = false;
+
+    if (limit_timer) {
+        lv_timer_del(limit_timer);
+        limit_timer = NULL;
+    }
+    event_log_ended();
 
     lv_anim_del(circle, breath_anim_cb);
     watch.stop();  // cut any vibration still playing
