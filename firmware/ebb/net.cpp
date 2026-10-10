@@ -29,14 +29,47 @@ void net_begin()
     http.setTimeout(HTTP_TIMEOUT_MS);
 }
 
+// Prints why WiFi isn't up: the status code and whether our network is
+// visible at all. The ESP32 only sees 2.4 GHz networks.
+static void log_wifi_problem()
+{
+    Serial.printf("[net] WiFi not connected, status=%d (1=SSID not found, 4=connect failed/wrong password, 6=disconnected)\n",
+                  WiFi.status());
+    int n = WiFi.scanNetworks();
+    bool found = false;
+    for (int i = 0; i < n; i++) {
+        if (WiFi.SSID(i) == WIFI_SSID) {
+            found = true;
+            Serial.printf("[net] '%s' visible: channel %d, signal %d dBm\n",
+                          WIFI_SSID, WiFi.channel(i), WiFi.RSSI(i));
+        }
+    }
+    if (!found) {
+        Serial.printf("[net] '%s' NOT visible on 2.4 GHz. Networks the watch can see (%d):\n", WIFI_SSID, n);
+        for (int i = 0; i < n && i < 15; i++) {
+            Serial.printf("[net]   %s (ch %d, %d dBm)\n", WiFi.SSID(i).c_str(), WiFi.channel(i), WiFi.RSSI(i));
+        }
+    }
+    WiFi.scanDelete();
+}
+
 bool net_connected()
 {
-    if (WiFi.status() == WL_CONNECTED) return true;
+    static bool was_connected = false;
+    if (WiFi.status() == WL_CONNECTED) {
+        if (!was_connected) {
+            Serial.printf("[net] WiFi connected, IP %s\n", WiFi.localIP().toString().c_str());
+            was_connected = true;
+        }
+        return true;
+    }
+    was_connected = false;
 
     // Auto-reconnect usually handles drops; this is a backstop if it gives up.
     if (millis() - last_wifi_attempt > WIFI_RETRY_MS) {
+        WiFi.disconnect();  // a scan fails while a connect attempt is running
+        log_wifi_problem();
         last_wifi_attempt = millis();
-        WiFi.disconnect();
         WiFi.begin(WIFI_SSID, WIFI_PASS);
     }
     return false;
