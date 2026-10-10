@@ -10,13 +10,16 @@ bool media_has(const char *path)
     return FFat.exists(path);
 }
 
-// Public object URL for a path in the bucket, derived from API_BASE_URL
+// Public object URL for a flash path, derived from API_BASE_URL
 // (https://<ref>.supabase.co/functions/v1 -> .../storage/v1/object/public/scene-media).
+// Files sit at the top of the bucket (ocean.gif, rain.mp3), so only the file
+// name is used; the extension keeps ocean.gif and ocean.mp3 apart.
 static String media_url(const char *path)
 {
     String base = String(API_BASE_URL);
     base.replace("/functions/v1", "/storage/v1/object/public/scene-media");
-    return base + path;
+    const char *name = strrchr(path, '/');
+    return base + (name ? name : path);
 }
 
 static void ensure(const char *path)
