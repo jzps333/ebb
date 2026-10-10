@@ -14,6 +14,22 @@ static HTTPClient       http;
 
 static uint32_t last_wifi_attempt = 0;
 
+// Set from the main loop and the network task, read by the network task.
+static char         device_token[80] = "";
+static portMUX_TYPE token_mux = portMUX_INITIALIZER_UNLOCKED;
+
+void net_set_token(const char *token)
+{
+    taskENTER_CRITICAL(&token_mux);
+    strlcpy(device_token, token, sizeof(device_token));
+    taskEXIT_CRITICAL(&token_mux);
+}
+
+bool net_has_token()
+{
+    return device_token[0] != '\0';
+}
+
 void net_begin()
 {
     WiFi.mode(WIFI_STA);
@@ -85,7 +101,11 @@ static bool open_request(const String &path)
                   ? http.begin(secure_client, url)
                   : http.begin(plain_client, url);
     if (!ok) return false;
-    http.addHeader("Authorization", String("Bearer ") + DEVICE_TOKEN);
+    char token[sizeof(device_token)];
+    taskENTER_CRITICAL(&token_mux);
+    strlcpy(token, device_token, sizeof(token));
+    taskEXIT_CRITICAL(&token_mux);
+    if (token[0]) http.addHeader("Authorization", String("Bearer ") + token);
     return true;
 }
 

@@ -29,8 +29,10 @@
 //
 // Pairing (no Authorization header: the watch has no token yet)
 // POST /functions/v1/device-api/pair/start   { "hardware_id": "…" }
-//   -> { "code": "482913", "secret": "<64 hex>", "expires_in": 900 }
-//      The watch shows code as a QR. Only the watch knows secret.
+//   -> { "code": "<20 chars>", "secret": "<64 hex>", "expires_in": 900 }
+//      The watch shows code as a QR (never typed, so it is long enough that it
+//      cannot be guessed). Only the watch knows secret. hardware_id is only a
+//      label: anyone can send any value, so nothing trusts it.
 // POST /functions/v1/device-api/pair/status  { "secret": "…", "want_token": true }
 //   -> { "status": "waiting", "expires_in": 812 }
 //    | { "status": "paired", "nickname": "Sam", "teachers": 1, "expires_in": 640, "token": "…" }
@@ -67,6 +69,13 @@ function json(body: unknown, status = 200): Response {
 function randomHex(bytes: number): string {
   const buf = crypto.getRandomValues(new Uint8Array(bytes));
   return Array.from(buf).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Unambiguous base32: no 0/O, 1/I/L. 20 chars ~ 100 bits.
+const QR_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+function randomQrCode(length = 20): string {
+  const buf = crypto.getRandomValues(new Uint8Array(length));
+  return Array.from(buf).map((b) => QR_ALPHABET[b % QR_ALPHABET.length]).join("");
 }
 
 function secondsLeft(expiresAt: string): number {
@@ -243,38 +252,17 @@ async function pairStart(req: Request): Promise<Response> {
   const body = await readJson(req);
   const hardwareId = typeof body?.hardware_id === "string" ? body.hardware_id.slice(0, 64) : null;
 
-  // A watch asking again gets a fresh code; its old unclaimed codes stop working.
-  if (hardwareId) {
-    await supabase
-      .from("pairing_sessions")
-      .update({ expires_at: new Date().toISOString() })
-      .eq("hardware_id", hardwareId)
-      .is("child_id", null)
-      .gt("expires_at", new Date().toISOString());
-  }
-
   const secret = randomHex(32);
-  const expiresAt = new Date(Date.now() + PAIRING_WINDOW_S * 1000).toISOString();
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000).padStart(6, "0");
-    const { count, error: cErr } = await supabase
-      .from("pairing_sessions")
-      .select("id", { count: "exact", head: true })
-      .eq("code", code)
-      .gt("expires_at", new Date().toISOString());
-    if (cErr) throw cErr;
-    if (count) continue;  // that code is in use right now; pick another
-
-    const { error } = await supabase.from("pairing_sessions").insert({
-      code,
-      secret_hash: await sha256Hex(secret),
-      hardware_id: hardwareId,
-      expires_at: expiresAt,
-    });
-    if (error) throw error;
-    return json({ code, secret, expires_in: PAIRING_WINDOW_S });
-  }
-  return json({ error: "try again" }, 503);
+  const qrCode = randomQrCode();
+  const { error } = await supabase.from("pairing_sessions").insert({
+    code: String(crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000).padStart(6, "0"),  // legacy column, unused
+    qr_code: qrCode,
+    secret_hash: await sha256Hex(secret),
+    hardware_id: hardwareId,
+    expires_at: new Date(Date.now() + PAIRING_WINDOW_S * 1000).toISOString(),
+  });
+  if (error) throw error;
+  return json({ code: qrCode, secret, expires_in: PAIRING_WINDOW_S });
 }
 
 async function pairStatus(req: Request): Promise<Response> {
@@ -308,10 +296,16 @@ async function pairStatus(req: Request): Promise<Response> {
     const token = randomHex(32);
     const tokenHash = await sha256Hex(token);
     if (!session.device_id) {
-      // Same physical watch paired before: retire its old device rows so the
-      // child has one current watch for the Start calm button.
+      // Same watch re-paired to the same child: retire its old row so the child
+      // has one current watch for Start calm. Scoped to this child, because
+      // hardware_id comes from an unauthenticated caller and must never let
+      // one family unlink another family's watch.
       if (session.hardware_id) {
-        await supabase.from("devices").update({ child_id: null }).eq("hardware_id", session.hardware_id);
+        await supabase
+          .from("devices")
+          .update({ child_id: null })
+          .eq("hardware_id", session.hardware_id)
+          .eq("child_id", session.child_id);
       }
       const { data: device, error: dErr } = await supabase
         .from("devices")

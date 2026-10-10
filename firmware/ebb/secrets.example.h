@@ -9,5 +9,6 @@
 // Local mock (tools/mock_device_api.py): "http://<your-computer-ip>:8787/functions/v1"
 #define API_BASE_URL   "https://your-project-ref.supabase.co/functions/v1"
 
-// The plain device token from the devices row you created by hand.
-#define DEVICE_TOKEN   "paste-device-token-here"
+// Leave empty: the watch pairs by QR with the Ebb iPhone app and keeps its
+// token in flash. Only paste a token here to skip pairing while developing.
+#define DEVICE_TOKEN   ""

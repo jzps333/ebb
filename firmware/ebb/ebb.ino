@@ -4,6 +4,7 @@
 #include "config.h"
 #include "calm_mode.h"
 #include "commands.h"
+#include "pairing.h"
 
 // Temporary home screen until the ui module exists: a Start button, a status
 // line for WiFi/polling, and Serial shortcuts 's' / 'x' for start/stop.
@@ -71,6 +72,8 @@ static void handle_serial()
     } else if (c == 'x') {
         Serial.println("stop_calm()");
         stop_calm();
+    } else if (c == 'u') {
+        pairing_forget();  // unpair: erase the token, show the QR again
     }
 }
 
@@ -83,15 +86,17 @@ void setup()
 
     build_home_screen();
     calm_mode_init();
+    pairing_begin(lv_scr_act());  // before commands_begin: loads the device token
     commands_begin();
 
-    Serial.printf("Ebb %s ready. Send 's' to start calm, 'x' to stop.\n", FIRMWARE_VERSION);
+    Serial.printf("Ebb %s ready. Send 's' start calm, 'x' stop, 'u' unpair.\n", FIRMWARE_VERSION);
 }
 
 void loop()
 {
     handle_serial();
     commands_handle();
+    pairing_ui_update();
     update_status_label();
     lv_task_handler();
     delay(5);

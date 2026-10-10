@@ -4,6 +4,7 @@
 #include "config.h"
 #include "calm_mode.h"
 #include "event_log.h"
+#include "pairing.h"
 
 enum CommandType : uint8_t { CMD_START_CALM, CMD_STOP_CALM };
 
@@ -56,17 +57,23 @@ static void poll_task(void *arg)
     for (;;) {
         uint32_t started = millis();
 
-        event_log_flush();  // calm start/end reports go out first: they fire the alerts
+        pairing_network_tick();  // gets a token if we have none; teacher window after
 
-        String path = String("/device-api/poll?profile_version=") + current_profile_version;
-        int code = net_get(path, body);
-        last_http_code = code;
-        last_poll_ms   = millis();
+        // Without a token device-api would answer 401, and event_log drops
+        // 4xx batches, so reports wait in the queue until the watch is paired.
+        if (net_has_token()) {
+            event_log_flush();  // calm start/end reports go out first: they fire the alerts
 
-        if (code == 200) {
-            parse_poll_response(body);
-        } else if (code != -100) {  // -100 = WiFi not up yet, not worth logging every time
-            Serial.printf("[commands] poll failed: %d %s\n", code, body.c_str());
+            String path = String("/device-api/poll?profile_version=") + current_profile_version;
+            int code = net_get(path, body);
+            last_http_code = code;
+            last_poll_ms   = millis();
+
+            if (code == 200) {
+                parse_poll_response(body);
+            } else if (code != -100) {  // -100 = WiFi not up yet, not worth logging every time
+                Serial.printf("[commands] poll failed: %d %s\n", code, body.c_str());
+            }
         }
 
         // Keep a steady 3 s rhythm even if the request itself took a while.
