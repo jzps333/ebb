@@ -87,6 +87,15 @@ static void audio_task(void *)
 
 void audio_begin()
 {
+    // The speaker amp (MAX98357A) runs from the PMU's DLDO1 rail. LilyGoLib
+    // switches it on but never sets its voltage, unlike every other rail, so
+    // set 3.3 V (the amp is rated 2.5-5.5 V) and log what we found.
+    uint16_t before = watch.getDLDO1Voltage();
+    watch.setDLDO1Voltage(3300);
+    watch.enableDLDO1();
+    Serial.printf("[audio] speaker rail DLDO1 was %u mV, now %u mV (%s)\n",
+                  before, watch.getDLDO1Voltage(), watch.isEnableDLDO1() ? "on" : "off");
+
     out = new AudioOutputI2S(1, AudioOutputI2S::EXTERNAL_I2S);
     out->SetPinout(BOARD_DAC_IIS_BCK, BOARD_DAC_IIS_WS, BOARD_DAC_IIS_DOUT);
     out->SetGain(0.1);
