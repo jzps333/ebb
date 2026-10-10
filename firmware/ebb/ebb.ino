@@ -22,8 +22,8 @@ static void start_btn_cb(lv_event_t *e)
 static void test_sound_cb(lv_event_t *e)
 {
     char path[64];
-    if (voice_next_clip(path, sizeof(path))) audio_play_once(path, 4.0f);
-    else if (FFat.exists("/audio/rain.mp3")) audio_play_once("/audio/rain.mp3", 4.0f);
+    if (voice_next_clip(path, sizeof(path))) audio_play_once(path, MAX_GAIN);
+    else if (FFat.exists("/audio/rain.mp3")) audio_play_once("/audio/rain.mp3", MAX_GAIN);
     else Serial.println("[audio] test: no sounds on the watch yet");
 }
 
@@ -68,7 +68,7 @@ static void handle_serial()
         stop_calm();
     } else if (c == 'v') {
         char path[64];
-        if (voice_next_clip(path, sizeof(path))) audio_play_once(path, 4.0f);  // speaker test
+        if (voice_next_clip(path, sizeof(path))) audio_play_once(path, MAX_GAIN);  // speaker test
         else Serial.println("no voice clips on the watch");
     } else if (c == 'u') {
         pairing_forget();  // unpair: erase the token, show the QR again

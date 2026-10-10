@@ -23,7 +23,7 @@ static const uint8_t HAPTIC_GENTLE = 7;     // DRV2605 library effect "Soft Bump
 static const uint8_t HAPTIC_MEDIUM = 47;    // "Buzz 1 - 100%"
 static const int     VOICE_EVERY_BREATHS = 3;      // parent's voice on every 3rd breath in
 static const uint32_t VOICE_EVERY_MS_NO_BREATH = 20000;  // ...or every 20 s with no breathing guide
-static const float   VOICE_GAIN = 4.0f;  // ESP8266Audio maximum; the watch speaker is very quiet
+static const float   VOICE_GAIN = MAX_GAIN;  // the watch speaker is very quiet
 
 // One step of a breathing pattern. grow: +1 breathe in, -1 breathe out, 0 hold.
 struct BreathStep {
@@ -142,9 +142,9 @@ static float volume_gain(const char *volume)
 {
     // The scene sounds are loudness-normalised quietly (-23 LUFS), so these
     // gains are higher than they look; 0.06/0.15 were inaudible on the watch.
-    // ESP8266Audio's maximum gain is 4.0; loud peaks may clip at the top end.
+    // Loud peaks may clip at the top end.
     if (!strcmp(volume, "low")) return 2.0f;
-    if (!strcmp(volume, "medium")) return 4.0f;
+    if (!strcmp(volume, "medium")) return MAX_GAIN;
     return 0.0f;
 }
 
