@@ -7,7 +7,7 @@ firmware/ebb/secrets.h
 # Web
 node_modules/
 .next/
-out/
+web/out/
 .vercel/
 *.tsbuildinfo
 next-env.d.ts
@@ -28,3 +28,6 @@ __pycache__/
 xcuserdata/
 *.xcuserstate
 DerivedData/
+
+# Downloaded source media (big); processed versions live in media/out
+media/raw/
