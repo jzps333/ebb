@@ -87,7 +87,24 @@ struct ChildCard: View {
                 todaySummary
             }
             .padding(.vertical, 4)
+
+            if model.profile?.isTeacher != true {
+                NavigationLink {
+                    if let row = model.calmProfiles[child.id] {
+                        CalmProfileView(child: child, row: row)
+                    } else {
+                        AssessmentView(child: child)
+                    }
+                } label: {
+                    Label(profileStatus, systemImage: "slider.horizontal.3")
+                }
+            }
         }
+    }
+
+    private var profileStatus: String {
+        guard let row = model.calmProfiles[child.id] else { return "Set up calm profile" }
+        return row.isApproved ? "Calm profile: \(CalmProfileView.label(row.profile.theme))" : "Calm profile waiting for your approval"
     }
 
     @ViewBuilder private var watchStatus: some View {

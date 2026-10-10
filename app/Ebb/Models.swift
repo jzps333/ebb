@@ -97,3 +97,76 @@ enum AgeBand: String, CaseIterable, Identifiable {
     case fourToFive = "4-5", sixToEight = "6-8", nineToEleven = "9-11", twelveToFourteen = "12-14", fifteenToEighteen = "15-18"
     var id: String { rawValue }
 }
+
+// MARK: Calm profile (what the watch runs)
+
+struct CalmProfile: Codable, Hashable {
+    struct AutoTriggers: Codable, Hashable { let motion: Bool; let noise: Bool }
+
+    let theme: String
+    let colors: [String]
+    let breathPattern: String
+    let vibration: String
+    let sound: String
+    let volume: String
+    let autoTriggers: AutoTriggers
+    let noiseSensitivity: String
+    let calmMessage: String
+    let parentSummary: String
+
+    enum CodingKeys: String, CodingKey {
+        case theme, colors, vibration, sound, volume
+        case breathPattern = "breath_pattern"
+        case autoTriggers = "auto_triggers"
+        case noiseSensitivity = "noise_sensitivity"
+        case calmMessage = "calm_message"
+        case parentSummary = "parent_summary"
+    }
+}
+
+struct CalmProfileRow: Decodable, Identifiable, Hashable {
+    let id: UUID
+    let childId: UUID?
+    let version: Int
+    let status: String  // "draft" or "approved"
+    let profile: CalmProfile
+
+    var isApproved: Bool { status == "approved" }
+
+    enum CodingKeys: String, CodingKey {
+        case id, version, status, profile
+        case childId = "child_id"
+    }
+}
+
+/// The parent's answers, stored as jsonb in assessments.answers and sent to
+/// generate-profile. Keys match docs/assessment-questions.md.
+struct AssessmentAnswers: Codable {
+    var triggers: Set<String> = []
+    var soundSensitivity = "a_little"
+    var touch = "depends"
+    var vibration = "not_sure"
+    var colors: Set<String> = []
+    var favoriteThings: Set<String> = []
+    var soundsLiked: Set<String> = []
+    var canFollowBreathing = "with_help"
+    var whatHelps = ""
+    var upsetSigns: Set<String> = []
+    var neverDo = ""
+
+    enum CodingKeys: String, CodingKey {
+        case triggers, touch, vibration, colors
+        case soundSensitivity = "sound_sensitivity"
+        case favoriteThings = "favorite_things"
+        case soundsLiked = "sounds_liked"
+        case canFollowBreathing = "can_follow_breathing"
+        case whatHelps = "what_helps"
+        case upsetSigns = "upset_signs"
+        case neverDo = "never_do"
+    }
+}
+
+struct NewAssessment: Encodable {
+    let child_id: UUID
+    let answers: AssessmentAnswers
+}

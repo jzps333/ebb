@@ -11,6 +11,7 @@ struct PairView: View {
     @State private var busy = false
     @State private var result: PairResult?
     @State private var addingChild = false
+    @State private var pairedChild: Child?
 
     var body: some View {
         NavigationStack {
@@ -116,7 +117,17 @@ struct PairView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
-            Button("Done") { dismiss() }.buttonStyle(.borderedProminent)
+            if let child = pairedChild, model.calmProfiles[child.id] == nil {
+                NavigationLink {
+                    AssessmentView(child: child)
+                } label: {
+                    Text("Set up \(child.nickname)'s calm profile").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                Button("Later") { dismiss() }
+            } else {
+                Button("Done") { dismiss() }.buttonStyle(.borderedProminent)
+            }
         }
         .padding()
     }
@@ -131,6 +142,7 @@ struct PairView: View {
     }
 
     private func claim(_ code: String, _ child: Child) async {
+        pairedChild = child
         busy = true
         result = await model.claimWatch(code: code, child: child)
         busy = false

@@ -16,6 +16,7 @@ final class AppModel {
     var children: [Child] = []
     var devices: [UUID: Device] = [:]        // child id -> that child's current watch
     var today: [UUID: DaySummary] = [:]      // child id -> today's summary
+    var calmProfiles: [UUID: CalmProfileRow] = [:]  // child id -> newest profile (draft or approved)
     var banner: String?                      // live "calm started" alert
     var errorMessage: String?
     var sendingCommandFor: UUID?             // child id while a Start/Stop is in flight
@@ -93,7 +94,21 @@ final class AppModel {
 
             try await self.reloadDevices()
             try await self.reloadToday()
+            try await self.reloadCalmProfiles()
         }
+    }
+
+    private func reloadCalmProfiles() async throws {
+        let rows: [CalmProfileRow] = try await client.from("calm_profiles")
+            .select("id, child_id, version, status, profile")
+            .order("version", ascending: false)
+            .execute()
+            .value
+        var newest: [UUID: CalmProfileRow] = [:]
+        for row in rows {
+            if let child = row.childId, newest[child] == nil { newest[child] = row }
+        }
+        calmProfiles = newest
     }
 
     private func reloadDevices() async throws {
@@ -142,6 +157,46 @@ final class AppModel {
             try await self.client.from("commands")
                 .insert(NewCommand(device_id: device.id, child_id: child.id, type: type))
                 .execute()
+        }
+    }
+
+    // MARK: Assessment and calm profile
+
+    /// Saves the answers, then asks generate-profile (Gemini) for a draft profile.
+    func makeCalmProfile(for child: Child, answers: AssessmentAnswers) async -> CalmProfileRow? {
+        struct Saved: Decodable { let id: UUID }
+        struct Request: Encodable { let assessment_id: UUID }
+        do {
+            let saved: Saved = try await client.from("assessments")
+                .insert(NewAssessment(child_id: child.id, answers: answers))
+                .select("id")
+                .single()
+                .execute()
+                .value
+            let row: CalmProfileRow = try await client.functions.invoke(
+                "generate-profile",
+                options: FunctionInvokeOptions(body: Request(assessment_id: saved.id))
+            )
+            calmProfiles[child.id] = row
+            return row
+        } catch let FunctionsError.httpError(_, data) {
+            struct Message: Decodable { let error: String }
+            errorMessage = (try? JSONDecoder().decode(Message.self, from: data))?.error ?? "Could not make the profile."
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        return nil
+    }
+
+    /// Approving makes it the profile the watch downloads on its next poll.
+    func approve(_ row: CalmProfileRow) async {
+        struct Approval: Encodable { let status: String; let approved_at: Date }
+        await run {
+            try await self.client.from("calm_profiles")
+                .update(Approval(status: "approved", approved_at: Date()))
+                .eq("id", value: row.id)
+                .execute()
+            try await self.reloadCalmProfiles()
         }
     }
 

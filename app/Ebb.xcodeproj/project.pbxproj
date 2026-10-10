@@ -15,18 +15,22 @@
 		80F72F1B11719DF71A4AA429 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100B18614FCEECE78AB428E /* HomeView.swift */; };
 		AAD520A30D167C11C4567DFF /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01DFA7BD92DB28B55C251156 /* LoginView.swift */; };
 		C3C8320E925F9777E323C303 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C233FAEB373C24F203BBB5 /* AppModel.swift */; };
+		D569A223FCB24EA5D2A9A201 /* AssessmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D580F65A45449959E70B3C64 /* AssessmentView.swift */; };
+		F34A37361E1214EDE985B097 /* CalmProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84075EAA5C1A66C8565EA053 /* CalmProfileView.swift */; };
 		FD2E1316707D51EA59AE87A8 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = FDE81BEDFF5D198436480D33 /* Supabase */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		01DFA7BD92DB28B55C251156 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		1993824FB0E8887853F8C371 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
+		84075EAA5C1A66C8565EA053 /* CalmProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalmProfileView.swift; sourceTree = "<group>"; };
 		8516F308A385E28E8444DCBD /* PairView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairView.swift; sourceTree = "<group>"; };
 		8CA0B2CD0C92B5F3CF3B8030 /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
 		8D369C2595ACC2B42995E7FD /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		A100B18614FCEECE78AB428E /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		A1C233FAEB373C24F203BBB5 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		CC2604493591535B7C9C79FC /* Ebb.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Ebb.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D580F65A45449959E70B3C64 /* AssessmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssessmentView.swift; sourceTree = "<group>"; };
 		ED5CA223F4EFCA52A1C5DB4B /* EbbApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EbbApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -62,6 +66,8 @@
 			isa = PBXGroup;
 			children = (
 				A1C233FAEB373C24F203BBB5 /* AppModel.swift */,
+				D580F65A45449959E70B3C64 /* AssessmentView.swift */,
+				84075EAA5C1A66C8565EA053 /* CalmProfileView.swift */,
 				8CA0B2CD0C92B5F3CF3B8030 /* Config.swift */,
 				ED5CA223F4EFCA52A1C5DB4B /* EbbApp.swift */,
 				A100B18614FCEECE78AB428E /* HomeView.swift */,
@@ -138,6 +144,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				C3C8320E925F9777E323C303 /* AppModel.swift in Sources */,
+				D569A223FCB24EA5D2A9A201 /* AssessmentView.swift in Sources */,
+				F34A37361E1214EDE985B097 /* CalmProfileView.swift in Sources */,
 				2525FAF1F7DC8B51265582FC /* Config.swift in Sources */,
 				36E2441EA9D2E9E48F49D2C8 /* EbbApp.swift in Sources */,
 				80F72F1B11719DF71A4AA429 /* HomeView.swift in Sources */,
