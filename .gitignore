@@ -20,3 +20,6 @@ supabase/.branches/
 build/
 .DS_Store
 __pycache__/
+
+# Local-only credentials
+*.local.txt
