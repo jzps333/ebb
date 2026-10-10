@@ -128,7 +128,7 @@ void event_log_flush()
         memmove(&pending[0], &pending[sent], sizeof(Event) * (pending_count - sent));
         pending_count -= sent;
         taskEXIT_CRITICAL(&pending_mux);
-    } else if (code != -100) {
+    } else if (code != -100 && code != -102) {  // WiFi / clock not ready yet
         Serial.printf("[event_log] send failed (%d), %d event(s) kept for later\n", code, n);
     }
 }

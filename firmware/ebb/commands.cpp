@@ -71,7 +71,7 @@ static void poll_task(void *arg)
 
             if (code == 200) {
                 parse_poll_response(body);
-            } else if (code != -100) {  // -100 = WiFi not up yet, not worth logging every time
+            } else if (code != -100 && code != -102) {  // WiFi / clock not ready yet: not worth logging
                 Serial.printf("[commands] poll failed: %d %s\n", code, body.c_str());
             }
         }

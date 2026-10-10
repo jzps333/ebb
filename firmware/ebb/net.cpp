@@ -1,6 +1,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#include <time.h>
 #include "net.h"
 #include "config.h"
 #include "secrets.h"
@@ -94,6 +95,27 @@ bool net_connected()
     return false;
 }
 
+bool net_clock_ready()
+{
+    return time(nullptr) > 1700000000;  // after Nov 2023, so not the 1970 boot clock
+}
+
+static bool is_https()
+{
+    return strncmp(API_BASE_URL, "https://", 8) == 0;
+}
+
+// Prints mbedTLS's reason when an HTTPS connection fails, e.g. a certificate
+// that does not chain to ca_certs.h, instead of HTTPClient's bare -1.
+static void log_tls_error(int code)
+{
+    if (code >= 0 || !is_https()) return;
+    char reason[120];
+    int tls = secure_client.lastError(reason, sizeof(reason));
+    Serial.printf("[net] request failed: %d (%s); TLS: %d %s\n",
+                  code, HTTPClient::errorToString(code).c_str(), tls, tls ? reason : "none");
+}
+
 static bool open_request(const String &path)
 {
     String url = String(API_BASE_URL) + path;
@@ -111,6 +133,7 @@ static bool open_request(const String &path)
 
 static int finish_request(int code, String &body_out)
 {
+    log_tls_error(code);
     body_out = code > 0 ? http.getString() : String();
     http.end();  // with setReuse(true) this keeps the socket open for next time
     return code;
@@ -119,6 +142,7 @@ static int finish_request(int code, String &body_out)
 int net_get(const String &path, String &body_out)
 {
     if (!net_connected()) return -100;
+    if (is_https() && !net_clock_ready()) return -102;
     if (!open_request(path)) return -101;
     return finish_request(http.GET(), body_out);
 }
@@ -126,6 +150,7 @@ int net_get(const String &path, String &body_out)
 int net_post(const String &path, const String &json_body, String &body_out)
 {
     if (!net_connected()) return -100;
+    if (is_https() && !net_clock_ready()) return -102;
     if (!open_request(path)) return -101;
     http.addHeader("Content-Type", "application/json");
     return finish_request(http.POST(json_body), body_out);

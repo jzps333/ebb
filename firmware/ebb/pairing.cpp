@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
+#include <WiFi.h>
 #include "pairing.h"
 #include "net.h"
 #include "secrets.h"
@@ -134,6 +135,9 @@ void pairing_network_tick()
         window_open = false;
     }
     if (!net_connected()) return;
+    // HTTPS needs the real time to check certificates; the pairing screen
+    // already says "Setting clock..." until NTP answers (pairing_ui_update).
+    if (!net_clock_ready()) return;
 
     if (!net_has_token()) {
         if (!secret[0] || (int32_t)(millis() - code_end_ms) > 0) request_code();
@@ -265,7 +269,9 @@ void pairing_ui_update()
 
     if (s.ui == UI_CONNECTING) {
         lv_obj_add_flag(qr, LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text(info_label, "Connecting...");
+        lv_label_set_text(info_label, WiFi.status() != WL_CONNECTED ? "Connecting to WiFi..."
+                                      : !net_clock_ready()          ? "Setting clock..."
+                                                                    : "Getting a pairing code...");
         return;
     }
     // The code is only ever scanned, never shown as text: it is long and random
