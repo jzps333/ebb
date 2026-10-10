@@ -13,6 +13,10 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { GEMINI_SCHEMA, sanitize, SYSTEM_PROMPT } from "./profile-schema.ts";
 
+// Gemini 2.5 is closed to new API keys (404), so default to 3.5 Flash-Lite:
+// fast, cheap, good at structured JSON. Override with the GEMINI_MODEL secret.
+const MODEL = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.5-flash-lite";
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -26,9 +30,8 @@ function json(body: unknown, status = 200): Response {
 async function askGemini(ageBand: string, answers: Record<string, unknown>): Promise<Record<string, unknown>> {
   const key = Deno.env.get("GEMINI_API_KEY");
   if (!key) throw new HttpError(503, "AI is not set up yet (GEMINI_API_KEY missing)");
-  const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
 
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": key },  // header, so the key never sits in a URL
     body: JSON.stringify({
@@ -116,7 +119,7 @@ Deno.serve(async (req) => {
 
     const { data: saved, error: sErr } = await supabase
       .from("calm_profiles")
-      .insert({ child_id: child.id, version, profile, model: Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash" })
+      .insert({ child_id: child.id, version, profile, model: MODEL })
       .select("id, version, status, profile")
       .single();
     if (sErr) throw sErr;
