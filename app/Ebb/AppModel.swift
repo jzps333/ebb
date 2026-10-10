@@ -231,6 +231,18 @@ final class AppModel {
         return result?.ok == true
     }
 
+    /// A built-in calm female ElevenLabs voice instead of cloning (no recording).
+    func useStockVoice() async -> Bool {
+        struct Ok: Decodable { let ok: Bool }
+        let result: Ok? = await voiceCall {
+            try await self.client.functions.invoke(
+                "voice",
+                options: FunctionInvokeOptions(query: [URLQueryItem(name: "action", value: "use_stock")], body: [String: String]())
+            )
+        }
+        return result?.ok == true
+    }
+
     func makeVoiceClips(for child: Child, phrases: [String]) async -> [VoiceClip]? {
         struct Request: Encodable { let child_id: UUID; let phrases: [String] }
         struct Response: Decodable { let clips: [VoiceClip] }

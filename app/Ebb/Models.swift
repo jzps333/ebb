@@ -184,10 +184,14 @@ struct VoiceClip: Decodable, Identifiable, Hashable {
 
 struct VoiceState: Decodable {
     let hasVoice: Bool
+    let voiceKind: String?  // "stock" (calm AI voice) or "clone" (parent's own)
     let clips: [VoiceClip]
+
+    var isStock: Bool { voiceKind == "stock" }
 
     enum CodingKeys: String, CodingKey {
         case clips
         case hasVoice = "has_voice"
+        case voiceKind = "voice_kind"
     }
 }

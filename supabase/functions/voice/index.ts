@@ -4,9 +4,11 @@
 // POST ?action=clone&consent=1         body: the recording (audio/mp4, ~1 min)
 //   -> { "ok": true }     The recording goes straight to ElevenLabs and is never
 //                         stored; only the resulting voice id is kept.
+// POST ?action=use_stock               -> { "ok": true }  use a built-in calm
+//                         female ElevenLabs voice instead of cloning (no recording)
 // POST ?action=generate                { "child_id": "…", "phrases": ["You're safe.", …] }
 //   -> { "clips": [ { id, phrase, status, url } ] }   new drafts, url = 1 h signed link
-// GET  ?action=list&child_id=…         -> { "has_voice": true, "clips": [ … ] }
+// GET  ?action=list&child_id=…         -> { "has_voice": true, "voice_kind": "stock", "clips": [ … ] }
 // POST ?action=delete_voice            -> { "ok": true }  removes the voice at
 //                         ElevenLabs and every clip made from it
 //
@@ -20,6 +22,9 @@ const ELEVEN = "https://api.elevenlabs.io/v1";
 // Newest model first (best cloned-voice quality); if it rejects the request
 // (e.g. a voice setting it does not take), fall back to the steady v2 model.
 const TTS_MODELS = [Deno.env.get("ELEVENLABS_MODEL") ?? "eleven_v4", "eleven_multilingual_v2"];
+// ElevenLabs premade "Sarah": soft, warm young female voice, good for calm
+// narration. Override with the ELEVENLABS_STOCK_VOICE_ID secret.
+const STOCK_VOICE_ID = Deno.env.get("ELEVENLABS_STOCK_VOICE_ID") ?? "EXAVITQu4vr4xnSDxMaL";
 const MAX_RECORDING_BYTES = 10 * 1024 * 1024;
 const MAX_PHRASES = 8;
 const SIGNED_URL_SECONDS = 3600;
@@ -80,16 +85,29 @@ async function clone(req: Request, url: URL, uid: string, admin: SupabaseClient)
   const { voice_id } = await res.json();
 
   // Replacing an earlier voice: remove the old one at ElevenLabs too.
-  const { data: old } = await admin.from("parent_voices").select("elevenlabs_voice_id").eq("owner_id", uid).maybeSingle();
+  await setVoice(uid, voice_id, "clone", admin);
+  return json({ ok: true });
+}
+
+// Saves the parent's voice; if it replaces a clone of theirs, deletes that
+// clone at ElevenLabs. Stock voices are ElevenLabs' own and are never deleted.
+async function setVoice(uid: string, voiceId: string, kind: "clone" | "stock", admin: SupabaseClient) {
+  const { data: old } = await admin.from("parent_voices").select("elevenlabs_voice_id, kind").eq("owner_id", uid).maybeSingle();
   const { error } = await admin.from("parent_voices").upsert({
     owner_id: uid,
-    elevenlabs_voice_id: voice_id,
+    elevenlabs_voice_id: voiceId,
+    kind,
     consent_at: new Date().toISOString(),
   });
   if (error) throw error;
-  if (old && old.elevenlabs_voice_id !== voice_id) {
+  if (old && old.kind === "clone" && old.elevenlabs_voice_id !== voiceId) {
     await fetch(`${ELEVEN}/voices/${old.elevenlabs_voice_id}`, { method: "DELETE", headers: { "xi-api-key": elevenKey() } });
   }
+}
+
+async function useStock(uid: string, admin: SupabaseClient): Promise<Response> {
+  elevenKey();  // fail early with a clear message if voice is not set up
+  await setVoice(uid, STOCK_VOICE_ID, "stock", admin);
   return json({ ok: true });
 }
 
@@ -142,7 +160,7 @@ async function generate(req: Request, uid: string, user: SupabaseClient, admin: 
   if (!phrases.length) throw new HttpError(400, "Add at least one short phrase");
 
   const { data: voice } = await admin.from("parent_voices").select("elevenlabs_voice_id").eq("owner_id", uid).maybeSingle();
-  if (!voice) throw new HttpError(409, "Record your voice first");
+  if (!voice) throw new HttpError(409, "Choose a voice first (AI voice or your own)");
 
   // New drafts replace old drafts; approved clips stay until deleted.
   const { data: oldDrafts } = await admin.from("voice_clips").select("id, storage_path")
@@ -169,16 +187,16 @@ async function generate(req: Request, uid: string, user: SupabaseClient, admin: 
 
 async function list(url: URL, uid: string, user: SupabaseClient, admin: SupabaseClient): Promise<Response> {
   const childId = await ownChild(user, url.searchParams.get("child_id"));
-  const { data: voice } = await admin.from("parent_voices").select("owner_id").eq("owner_id", uid).maybeSingle();
+  const { data: voice } = await admin.from("parent_voices").select("kind").eq("owner_id", uid).maybeSingle();
   const { data: rows, error } = await admin.from("voice_clips").select("id, phrase, status, storage_path")
     .eq("child_id", childId).eq("owner_id", uid).order("created_at");
   if (error) throw error;
-  return json({ has_voice: !!voice, clips: await signedClips(admin, rows ?? []) });
+  return json({ has_voice: !!voice, voice_kind: voice?.kind ?? null, clips: await signedClips(admin, rows ?? []) });
 }
 
 async function deleteVoice(uid: string, admin: SupabaseClient): Promise<Response> {
-  const { data: voice } = await admin.from("parent_voices").select("elevenlabs_voice_id").eq("owner_id", uid).maybeSingle();
-  if (voice) {
+  const { data: voice } = await admin.from("parent_voices").select("elevenlabs_voice_id, kind").eq("owner_id", uid).maybeSingle();
+  if (voice?.kind === "clone") {  // never delete ElevenLabs' own stock voices
     await fetch(`${ELEVEN}/voices/${voice.elevenlabs_voice_id}`, { method: "DELETE", headers: { "xi-api-key": elevenKey() } });
   }
   const { data: clips } = await admin.from("voice_clips").select("id, storage_path").eq("owner_id", uid);
@@ -212,6 +230,7 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const action = url.searchParams.get("action");
     if (action === "clone" && req.method === "POST") return await clone(req, url, me.user.id, admin);
+    if (action === "use_stock" && req.method === "POST") return await useStock(me.user.id, admin);
     if (action === "generate" && req.method === "POST") return await generate(req, me.user.id, user, admin);
     if (action === "list" && req.method === "GET") return await list(url, me.user.id, user, admin);
     if (action === "delete_voice" && req.method === "POST") return await deleteVoice(me.user.id, admin);

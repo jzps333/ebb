@@ -19,17 +19,30 @@ struct VoiceView: View {
         List {
             if loading {
                 ProgressView()
-            } else if state?.hasVoice != true || rerecording {
+            } else if rerecording {
                 RecordVoiceSection(child: child) {
                     rerecording = false
                     await reload()
                 }
+            } else if state?.hasVoice != true {
+                chooseVoiceSection
             } else {
+                Section {
+                    Label(state?.isStock == true ? "Calm AI voice (female)" : "Your own voice",
+                          systemImage: state?.isStock == true ? "sparkles" : "person.wave.2")
+                } header: {
+                    Text("Voice")
+                }
                 phrasesSection
                 clipsSection
                 Section {
-                    Button("Record my voice again") { rerecording = true }
-                    Button("Delete my voice", role: .destructive) {
+                    if state?.isStock == true {
+                        Button("Use my own voice instead") { rerecording = true }
+                    } else {
+                        Button("Record my voice again") { rerecording = true }
+                        Button("Use the calm AI voice instead") { Task { await useAIVoice() } }
+                    }
+                    Button(state?.isStock == true ? "Remove voice and clips" : "Delete my voice", role: .destructive) {
                         Task {
                             busy = true
                             if await model.deleteVoice() { await reload() }
@@ -37,13 +50,39 @@ struct VoiceView: View {
                         }
                     }
                 } footer: {
-                    Text("Deleting removes your voice from ElevenLabs and every clip made from it, including on the watch.")
+                    Text("Removes every clip, including on the watch. Your own voice is also deleted from ElevenLabs.")
                 }
             }
         }
         .navigationTitle("Your voice for \(child.nickname)")
         .task { await reload() }
         .disabled(busy)
+    }
+
+    /// First visit: a ready-made calm voice, or the parent's own.
+    private var chooseVoiceSection: some View {
+        Section {
+            Button {
+                Task { await useAIVoice() }
+            } label: {
+                Label("Use a calm AI voice (female)", systemImage: "sparkles")
+            }
+            Button {
+                rerecording = true
+            } label: {
+                Label("Record my own voice", systemImage: "mic")
+            }
+        } header: {
+            Text("Which voice should \(child.nickname) hear?")
+        } footer: {
+            Text("The AI voice is ready right away, with nothing recorded. Your own voice takes a one-minute recording and is copied by ElevenLabs only with your consent.")
+        }
+    }
+
+    private func useAIVoice() async {
+        busy = true
+        if await model.useStockVoice() { await reload() }
+        busy = false
     }
 
     private var phrasesSection: some View {
