@@ -22,8 +22,8 @@ static void start_btn_cb(lv_event_t *e)
 static void test_sound_cb(lv_event_t *e)
 {
     char path[64];
-    if (voice_next_clip(path, sizeof(path))) audio_play_once(path, 1.0f);
-    else if (FFat.exists("/audio/rain.mp3")) audio_play_once("/audio/rain.mp3", 1.0f);
+    if (voice_next_clip(path, sizeof(path))) audio_play_once(path, 4.0f);
+    else if (FFat.exists("/audio/rain.mp3")) audio_play_once("/audio/rain.mp3", 4.0f);
     else Serial.println("[audio] test: no sounds on the watch yet");
 }
 
@@ -45,7 +45,7 @@ static void build_home_screen()
     lv_label_set_text(btn_label, "Start calm");
     lv_obj_center(btn_label);
 
-    // Plays a voice clip at full volume, to check the speaker.
+    // Plays a voice clip at maximum volume, to check the speaker.
     lv_obj_t *test = lv_btn_create(scr);
     lv_obj_set_size(test, 150, 44);
     lv_obj_align(test, LV_ALIGN_CENTER, 0, 62);
@@ -68,7 +68,7 @@ static void handle_serial()
         stop_calm();
     } else if (c == 'v') {
         char path[64];
-        if (voice_next_clip(path, sizeof(path))) audio_play_once(path, 1.0f);  // speaker test
+        if (voice_next_clip(path, sizeof(path))) audio_play_once(path, 4.0f);  // speaker test
         else Serial.println("no voice clips on the watch");
     } else if (c == 'u') {
         pairing_forget();  // unpair: erase the token, show the QR again
