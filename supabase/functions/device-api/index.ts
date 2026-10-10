@@ -27,6 +27,17 @@
 //   { "calm_active": true, "battery_pct": 82, "firmware_version": "0.3.0" }
 //   -> { "ok": true }
 //
+// Pairing (no Authorization header: the watch has no token yet)
+// POST /functions/v1/device-api/pair/start   { "hardware_id": "…" }
+//   -> { "code": "482913", "secret": "<64 hex>", "expires_in": 900 }
+//      The watch shows code as a QR. Only the watch knows secret.
+// POST /functions/v1/device-api/pair/status  { "secret": "…", "want_token": true }
+//   -> { "status": "waiting", "expires_in": 812 }
+//    | { "status": "paired", "nickname": "Sam", "teachers": 1, "expires_in": 640, "token": "…" }
+//    | { "status": "expired" }
+//      token is only included when want_token is true; asking again issues a
+//      new token and retires the old one (for a watch that lost the reply).
+//
 // Deployed with verify_jwt = false: the watch has no Supabase login, so this
 // function checks the device token itself (SHA-256 hash lookup in devices).
 // It uses the service role key, which bypasses RLS and never leaves Supabase.
@@ -40,6 +51,7 @@ const supabase = createClient(
 );
 
 const COMMAND_MAX_AGE_MS = 60_000;
+const PAIRING_WINDOW_S = 15 * 60;
 const TRIGGERS = new Set(["teacher", "motion", "noise", "child_tap"]);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -50,6 +62,15 @@ function json(body: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+function randomHex(bytes: number): string {
+  const buf = crypto.getRandomValues(new Uint8Array(bytes));
+  return Array.from(buf).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function secondsLeft(expiresAt: string): number {
+  return Math.max(0, Math.floor((Date.parse(expiresAt) - Date.now()) / 1000));
 }
 
 async function sha256Hex(text: string): Promise<string> {
@@ -209,11 +230,118 @@ async function status(device: Device, req: Request): Promise<Response> {
   return json({ ok: true });
 }
 
+async function readJson(req: Request): Promise<Record<string, unknown> | null> {
+  try {
+    const body = await req.json();
+    return body && typeof body === "object" ? body : null;
+  } catch {
+    return null;
+  }
+}
+
+async function pairStart(req: Request): Promise<Response> {
+  const body = await readJson(req);
+  const hardwareId = typeof body?.hardware_id === "string" ? body.hardware_id.slice(0, 64) : null;
+
+  // A watch asking again gets a fresh code; its old unclaimed codes stop working.
+  if (hardwareId) {
+    await supabase
+      .from("pairing_sessions")
+      .update({ expires_at: new Date().toISOString() })
+      .eq("hardware_id", hardwareId)
+      .is("child_id", null)
+      .gt("expires_at", new Date().toISOString());
+  }
+
+  const secret = randomHex(32);
+  const expiresAt = new Date(Date.now() + PAIRING_WINDOW_S * 1000).toISOString();
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000).padStart(6, "0");
+    const { count, error: cErr } = await supabase
+      .from("pairing_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("code", code)
+      .gt("expires_at", new Date().toISOString());
+    if (cErr) throw cErr;
+    if (count) continue;  // that code is in use right now; pick another
+
+    const { error } = await supabase.from("pairing_sessions").insert({
+      code,
+      secret_hash: await sha256Hex(secret),
+      hardware_id: hardwareId,
+      expires_at: expiresAt,
+    });
+    if (error) throw error;
+    return json({ code, secret, expires_in: PAIRING_WINDOW_S });
+  }
+  return json({ error: "try again" }, 503);
+}
+
+async function pairStatus(req: Request): Promise<Response> {
+  const body = await readJson(req);
+  if (typeof body?.secret !== "string") return json({ error: "secret required" }, 400);
+
+  const { data: session, error } = await supabase
+    .from("pairing_sessions")
+    .select("id, hardware_id, child_id, device_id, expires_at")
+    .eq("secret_hash", await sha256Hex(body.secret))
+    .maybeSingle();
+  if (error) throw error;
+
+  const left = session ? secondsLeft(session.expires_at) : 0;
+  if (!session || (!session.child_id && left === 0)) return json({ status: "expired" });
+  if (!session.child_id) return json({ status: "waiting", expires_in: left });
+
+  const { data: child } = await supabase.from("children").select("nickname").eq("id", session.child_id).single();
+  const { count: teachers } = await supabase
+    .from("child_members")
+    .select("user_id", { count: "exact", head: true })
+    .eq("child_id", session.child_id);
+  const reply: Record<string, unknown> = {
+    status: "paired",
+    nickname: child?.nickname ?? "",
+    teachers: teachers ?? 0,
+    expires_in: left,
+  };
+
+  if (body.want_token === true && left > 0) {
+    const token = randomHex(32);
+    const tokenHash = await sha256Hex(token);
+    if (!session.device_id) {
+      // Same physical watch paired before: retire its old device rows so the
+      // child has one current watch for the Start calm button.
+      if (session.hardware_id) {
+        await supabase.from("devices").update({ child_id: null }).eq("hardware_id", session.hardware_id);
+      }
+      const { data: device, error: dErr } = await supabase
+        .from("devices")
+        .insert({ child_id: session.child_id, hardware_id: session.hardware_id, token_hash: tokenHash })
+        .select("id")
+        .single();
+      if (dErr) throw dErr;
+      await supabase
+        .from("pairing_sessions")
+        .update({ device_id: device.id, token_issued_at: new Date().toISOString() })
+        .eq("id", session.id);
+    } else {
+      const { error: uErr } = await supabase.from("devices").update({ token_hash: tokenHash }).eq("id", session.device_id);
+      if (uErr) throw uErr;
+      await supabase.from("pairing_sessions").update({ token_issued_at: new Date().toISOString() }).eq("id", session.id);
+    }
+    reply.token = token;
+  }
+  return json(reply);
+}
+
 Deno.serve(async (req) => {
   const url = new URL(req.url);
-  const route = url.pathname.replace(/\/+$/, "").split("/").pop();
+  // Everything after ".../device-api/", e.g. "poll" or "pair/status".
+  const route = url.pathname.replace(/\/+$/, "").split("/device-api/")[1] ?? "";
 
   try {
+    if (route === "pair/start" && req.method === "POST") return await pairStart(req);
+    if (route === "pair/status" && req.method === "POST") return await pairStatus(req);
+
     const device = await authenticate(req);
     if (!device) return json({ error: "unauthorized" }, 401);
 
