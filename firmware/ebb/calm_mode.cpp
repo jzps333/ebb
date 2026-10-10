@@ -103,8 +103,9 @@ static void run_step()
     }
     if (s.grow > 0) {
         haptic_pulse();  // a pulse on each breath in
-        // Start of every 3rd breath in after the first: the parent's voice.
-        if (++breaths % VOICE_EVERY_BREATHS == 0) maybe_say_something();
+        // The voice on the first breath in (so it is heard straight away),
+        // then on every 3rd one after that: breaths 1, 4, 7, ...
+        if (breaths++ % VOICE_EVERY_BREATHS == 0) maybe_say_something();
     }
 
     lv_timer_set_period(step_timer, s.ms);
@@ -229,6 +230,7 @@ void start_calm(const char *trigger, const char *command_id)
         lv_obj_add_flag(circle, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(hint_label, LV_OBJ_FLAG_HIDDEN);
         haptic_pulse();  // one gentle "I'm here" pulse, unless vibration is off
+        maybe_say_something();  // straight away, then every 20 s
         lv_timer_reset(voice_timer);
         lv_timer_resume(voice_timer);
     }

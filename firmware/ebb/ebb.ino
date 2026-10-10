@@ -1,6 +1,7 @@
 #include <LilyGoLib.h>
 #include <LV_Helper.h>
 #include <WiFi.h>
+#include <FFat.h>
 #include "config.h"
 #include "calm_mode.h"
 #include "commands.h"
@@ -16,6 +17,14 @@
 static void start_btn_cb(lv_event_t *e)
 {
     start_calm();
+}
+
+static void test_sound_cb(lv_event_t *e)
+{
+    char path[64];
+    if (voice_next_clip(path, sizeof(path))) audio_play_once(path, 1.0f);
+    else if (FFat.exists("/audio/rain.mp3")) audio_play_once("/audio/rain.mp3", 1.0f);
+    else Serial.println("[audio] test: no sounds on the watch yet");
 }
 
 static void build_home_screen()
@@ -35,6 +44,16 @@ static void build_home_screen()
     lv_obj_t *btn_label = lv_label_create(btn);
     lv_label_set_text(btn_label, "Start calm");
     lv_obj_center(btn_label);
+
+    // Plays a voice clip at full volume, to check the speaker.
+    lv_obj_t *test = lv_btn_create(scr);
+    lv_obj_set_size(test, 150, 44);
+    lv_obj_align(test, LV_ALIGN_CENTER, 0, 62);
+    lv_obj_set_style_bg_color(test, lv_color_hex(0x444444), 0);
+    lv_obj_add_event_cb(test, test_sound_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *test_label = lv_label_create(test);
+    lv_label_set_text(test_label, "Test sound");
+    lv_obj_center(test_label);
 }
 
 static void handle_serial()
