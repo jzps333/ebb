@@ -5,6 +5,7 @@
 #include "pairing.h"
 #include "net.h"
 #include "secrets.h"
+#include "calm_mode.h"
 
 // ---- What the network task tells the screen ---------------------------------
 // Written by the network task, read by the main loop, so access goes through
@@ -61,6 +62,10 @@ static char     secret[80]   = "";  // proves to pair/status that we are this wa
 static uint32_t code_end_ms  = 0;   // when the current code expires
 static bool     window_open  = false;
 static volatile bool restart_requested = false;
+// Set by the main loop (Done tapped, or calm mode started) to end the teacher
+// window. Only the network task clears window_open, so it must be told; else
+// its next status check would publish UI_PAIRED and bring the QR back.
+static volatile bool close_window_requested = false;
 
 static String hardware_id()
 {
@@ -124,6 +129,8 @@ static void check_status(bool want_token)
         window_open = true;
         Serial.printf("[pairing] paired with %s, token saved\n", (const char *)(doc["nickname"] | ""));
     }
+    // Done may have been tapped while this request was in flight.
+    if (close_window_requested) return;
     publish(UI_PAIRED, nullptr, doc["nickname"] | "", doc["teachers"] | 0, end_ms);
 }
 
@@ -131,8 +138,16 @@ void pairing_network_tick()
 {
     if (restart_requested) {
         restart_requested = false;
+        close_window_requested = false;
         secret[0] = '\0';
         window_open = false;
+    }
+    if (close_window_requested) {
+        close_window_requested = false;  // cleared only when acted on, so no tap is lost
+        if (window_open) {
+            window_open = false;
+            publish(UI_FINISHED, nullptr, nullptr, -1, 0);
+        }
     }
     if (!net_connected()) return;
     // HTTPS needs the real time to check certificates; the pairing screen
@@ -167,9 +182,15 @@ static void close_pairing_screen()
     if (pair_scr && lv_scr_act() == pair_scr) lv_scr_load(home);
 }
 
+static void finish_window()
+{
+    close_window_requested = true;
+    publish(UI_FINISHED, nullptr, nullptr, -1, 0);
+}
+
 static void done_cb(lv_event_t *e)
 {
-    publish(UI_FINISHED, nullptr, nullptr, -1, 0);
+    finish_window();
 }
 
 static void build_pairing_screen()
@@ -256,6 +277,13 @@ void pairing_ui_update()
     shown_version = s.version;
 
     if (s.ui == UI_HIDDEN) return;
+
+    // Calm mode running means setup is over: close the teacher window so that
+    // stopping calm returns to the home screen instead of the QR.
+    if (s.ui == UI_PAIRED && calm_is_running()) {
+        finish_window();
+        return;
+    }
     if (s.ui == UI_FINISHED) {
         close_pairing_screen();
         return;
