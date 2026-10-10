@@ -3,9 +3,10 @@
 // Loops one MP3 from flash through the watch speaker (MAX98357A over I2S).
 // Decoding runs on its own task so the breathing animation never waits on it.
 
-// Highest usable gain. ESP8266Audio stores gain as uint8_t(gain * 64), so
-// 4.0 becomes 256 -> 0 and plays silence; 3.9 is effectively the maximum.
-#define MAX_GAIN 3.9f
+// Gain is the drive into LoudOutput's soft limiter (see loud_output.h): above
+// ~3 the limiter is doing most of the work, so louder settings stay clean.
+// (ESP8266Audio's own SetGain wraps 4.0 to 0 = silence; we no longer use it.)
+#define MAX_GAIN 6.0f
 
 void audio_begin();
 

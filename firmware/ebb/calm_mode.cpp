@@ -143,7 +143,7 @@ static float volume_gain(const char *volume)
     // The scene sounds are loudness-normalised quietly (-23 LUFS), so these
     // gains are higher than they look; 0.06/0.15 were inaudible on the watch.
     // Loud peaks may clip at the top end.
-    if (!strcmp(volume, "low")) return 2.0f;
+    if (!strcmp(volume, "low")) return 3.0f;
     if (!strcmp(volume, "medium")) return MAX_GAIN;
     return 0.0f;
 }

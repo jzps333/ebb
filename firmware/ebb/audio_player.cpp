@@ -5,9 +5,11 @@
 #include <AudioGeneratorMP3.h>
 #include <LilyGoLib.h>
 #include "audio_player.h"
+#include "loud_output.h"
 
 // I2S port 1, as LilyGO recommends (port 0 is the PDM microphone's).
 static AudioOutputI2S    *out  = nullptr;
+static LoudOutput        *loud = nullptr;  // high-pass + soft limiter in front of the speaker
 static AudioFileSourceFS *file = nullptr;
 static AudioGeneratorMP3 *mp3  = nullptr;
 
@@ -43,8 +45,8 @@ static void start_now(const char *path, float gain, bool once = false)
         return;
     }
     file = new AudioFileSourceFS(FFat, path);
-    out->SetGain(gain);
-    bool ok = mp3->begin(file, out);
+    loud->SetGain(gain);  // drive into the soft limiter; the I2S stage stays at 1.0
+    bool ok = mp3->begin(file, loud);
     if (ok) strlcpy(playing_path, path, sizeof(playing_path));
     if (once || !ok) Serial.printf("[audio] %s %s (%u bytes, gain %.2f)\n", ok ? "playing" : "cannot decode",
                                    path, (unsigned)file->getSize(), gain);
@@ -98,7 +100,8 @@ void audio_begin()
 
     out = new AudioOutputI2S(1, AudioOutputI2S::EXTERNAL_I2S);
     out->SetPinout(BOARD_DAC_IIS_BCK, BOARD_DAC_IIS_WS, BOARD_DAC_IIS_DOUT);
-    out->SetGain(0.1);
+    out->SetGain(1.0);
+    loud = new LoudOutput(out);
     mp3 = new AudioGeneratorMP3();
     // Core 0 with the network task, at a higher priority so HTTPS never starves it.
     xTaskCreatePinnedToCore(audio_task, "audio", 8192, nullptr, 3, nullptr, 0);
