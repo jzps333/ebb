@@ -23,7 +23,7 @@ static const uint8_t HAPTIC_GENTLE = 7;     // DRV2605 library effect "Soft Bump
 static const uint8_t HAPTIC_MEDIUM = 47;    // "Buzz 1 - 100%"
 static const int     VOICE_EVERY_BREATHS = 3;      // parent's voice on every 3rd breath in
 static const uint32_t VOICE_EVERY_MS_NO_BREATH = 20000;  // ...or every 20 s with no breathing guide
-static const float   VOICE_GAIN = 0.2f;
+static const float   VOICE_GAIN = 1.0f;  // tested on the watch: 0.2 was inaudible
 
 // One step of a breathing pattern. grow: +1 breathe in, -1 breathe out, 0 hold.
 struct BreathStep {
@@ -139,8 +139,10 @@ static void pick_pattern(const char *name)
 
 static float volume_gain(const char *volume)
 {
-    if (!strcmp(volume, "low")) return 0.06f;
-    if (!strcmp(volume, "medium")) return 0.15f;
+    // The scene sounds are loudness-normalised quietly (-23 LUFS), so these
+    // gains are higher than they look; 0.06/0.15 were inaudible on the watch.
+    if (!strcmp(volume, "low")) return 0.35f;
+    if (!strcmp(volume, "medium")) return 0.6f;
     return 0.0f;
 }
 

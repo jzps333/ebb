@@ -47,6 +47,10 @@ static void handle_serial()
     } else if (c == 'x') {
         Serial.println("stop_calm()");
         stop_calm();
+    } else if (c == 'v') {
+        char path[64];
+        if (voice_next_clip(path, sizeof(path))) audio_play_once(path, 1.0f);  // speaker test
+        else Serial.println("no voice clips on the watch");
     } else if (c == 'u') {
         pairing_forget();  // unpair: erase the token, show the QR again
     }
@@ -67,7 +71,7 @@ void setup()
     pairing_begin(lv_scr_act());  // before commands_begin: loads the device token
     commands_begin();
 
-    Serial.printf("Ebb %s ready. Send 's' start calm, 'x' stop, 'u' unpair.\n", FIRMWARE_VERSION);
+    Serial.printf("Ebb %s ready. Send 's' start calm, 'x' stop, 'v' voice test, 'u' unpair.\n", FIRMWARE_VERSION);
 }
 
 void loop()

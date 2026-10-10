@@ -37,10 +37,17 @@ static void start_now(const char *path, float gain, bool once = false)
 {
     stop_now();
     playing_once = once;
-    if (!path[0] || !FFat.exists(path)) return;
+    if (!path[0]) return;
+    if (!FFat.exists(path)) {
+        Serial.printf("[audio] missing %s\n", path);
+        return;
+    }
     file = new AudioFileSourceFS(FFat, path);
     out->SetGain(gain);
-    if (mp3->begin(file, out)) strlcpy(playing_path, path, sizeof(playing_path));
+    bool ok = mp3->begin(file, out);
+    if (ok) strlcpy(playing_path, path, sizeof(playing_path));
+    if (once || !ok) Serial.printf("[audio] %s %s (%u bytes, gain %.2f)\n", ok ? "playing" : "cannot decode",
+                                   path, (unsigned)file->getSize(), gain);
 }
 
 static void audio_task(void *)
