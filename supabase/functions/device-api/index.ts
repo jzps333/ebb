@@ -166,7 +166,7 @@ async function events(device: Device, req: Request): Promise<Response> {
     const trigger = raw?.trigger;
     const startedAt = isoOrNull(raw?.started_at);
     if (typeof trigger !== "string" || !TRIGGERS.has(trigger) || !startedAt) {
-      console.warn("skipping invalid event", raw);
+      console.warn("skipping invalid event", device.id);  // not the event itself: it is a child's data
       continue;
     }
     const endedAt = isoOrNull(raw.ended_at);
@@ -344,7 +344,8 @@ Deno.serve(async (req) => {
     if (route === "status" && req.method === "POST") return await status(device, req);
     return json({ error: "not found" }, 404);
   } catch (err) {
-    console.error(err);
+    const e = err as { name?: string; code?: string };
+    console.error("device-api failed", route, e?.name ?? "Error", e?.code ?? "");
     return json({ error: "server error" }, 500);
   }
 });

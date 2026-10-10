@@ -45,7 +45,9 @@ async function askGemini(ageBand: string, answers: Record<string, unknown>): Pro
     }),
   });
   if (!res.ok) {
-    console.error("gemini error", res.status, await res.text());
+    // Status and size only: the body can echo the child's assessment answers.
+    const detail = await res.text();
+    console.error("gemini error", res.status, `${detail.length} bytes`);
     throw new HttpError(502, "The AI did not answer; try again");
   }
   const out = await res.json();
@@ -53,7 +55,7 @@ async function askGemini(ageBand: string, answers: Record<string, unknown>): Pro
   try {
     return JSON.parse(text);
   } catch {
-    console.error("gemini returned non-JSON", text);
+    console.error("gemini returned non-JSON", typeof text === "string" ? `${text.length} chars` : typeof text);
     throw new HttpError(502, "The AI answer was not usable; try again");
   }
 }
@@ -121,7 +123,9 @@ Deno.serve(async (req) => {
     return json(saved);
   } catch (err) {
     if (err instanceof HttpError) return json({ error: err.message }, err.status);
-    console.error(err);
+    // Name and code only; a Postgres error message can quote the row it rejected.
+    const e = err as { name?: string; code?: string };
+    console.error("generate-profile failed", e?.name ?? "Error", e?.code ?? "");
     return json({ error: "server error" }, 500);
   }
 });
