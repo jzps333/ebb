@@ -1,0 +1,3 @@
+-- Checks that a teacher cannot see a student they are not linked to.
+-- Run with: supabase test db
+-- TODO: Teammate 2 builds this.

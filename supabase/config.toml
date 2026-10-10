@@ -1,0 +1,7 @@
+# Supabase local settings.
+# TODO: Teammate 2 builds this. Run `supabase init` and merge its output here.
+
+# The watch sends its own device token, not a Supabase login, so device-api
+# checks the token itself (hash lookup in devices.token_hash).
+[functions.device-api]
+verify_jwt = false

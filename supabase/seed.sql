@@ -1,0 +1,2 @@
+-- Demo teacher, parent, student and a week of fake sessions for the video.
+-- TODO: Teammate 2 builds this.

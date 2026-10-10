@@ -1,0 +1,4 @@
+-- All eight tables (profiles, children, child_members, assessments, calm_profiles,
+-- devices, commands, events), indexes, RLS policies, private.user_child_ids(),
+-- the sign-up trigger, and Realtime on events and devices.
+-- TODO: Teammate 2 builds this.
