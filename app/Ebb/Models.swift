@@ -237,18 +237,28 @@ struct SceneSet: Decodable, Identifiable {
     }
 }
 
-/// The latest finished calm moment nobody has rated yet.
-struct UnratedEvent: Decodable, Identifiable {
+/// One finished calm session, with its scene and the teacher's rating.
+struct CalmMoment: Decodable, Identifiable, Hashable {
     let id: UUID
     let childId: UUID
     let startedAt: Date
+    let endedAt: Date?
     let trigger: String
     let sceneId: String?
+    var helped: Bool?
+    let helpedAt: Date?
+
+    var minutes: Int {
+        guard let endedAt else { return 0 }
+        return max(1, Int((endedAt.timeIntervalSince(startedAt) / 60).rounded()))
+    }
 
     enum CodingKeys: String, CodingKey {
-        case id, trigger
+        case id, trigger, helped
         case childId = "child_id"
         case startedAt = "started_at"
+        case endedAt = "ended_at"
         case sceneId = "scene_id"
+        case helpedAt = "helped_at"
     }
 }

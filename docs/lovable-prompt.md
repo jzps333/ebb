@@ -32,7 +32,14 @@ linked children, so the website never filters for security itself.
   (a watch is "online" if last_seen_at is within 30 seconds)
 - events = one calm session ("tantrum"): id, child_id, trigger ('teacher' | 'child_tap' | 'motion' | 'noise'),
   started_by (profile id when a teacher started it), started_at, ended_at (null while still calming),
-  noise_db, motion_score, helped (true/false/null)
+  noise_db, motion_score, scene_id (which calm scene played, see scenes),
+  helped (true/false/null = the teacher's "Did it help?"), helped_by (profile id of the teacher who rated),
+  helped_at (when it was rated). Only linked teachers can set helped; helped_by/helped_at are stamped
+  automatically by the database.
+- scenes: id, title (e.g. "Earth and rain"), video, sound. Join events.scene_id -> scenes.title.
+  Preview GIF: https://pchbznvjjmfcfjwrbmvj.supabase.co/storage/v1/object/public/scene-media/<video>.gif
+- scene_sets (child_id, week_start, status 'draft'|'approved') + scene_set_items (set_id, position 1-6,
+  scene_id, is_anchor): the 6 scenes the watch rotates through each week (managed in the iPhone app).
 - child_day_summary (view): child_id, day (date, US Eastern), sessions, calm_minutes, by_teacher,
   by_child_tap, by_motion, by_noise, helped_yes, helped_no, active_now, first_started_at, last_started_at
 - calm_profiles: child_id, version, status ('draft' | 'approved'), profile (jsonb: theme, colors,
@@ -62,7 +69,9 @@ Times in the browser's local time; days follow child_day_summary.day.
 1. Class page: a card per linked child: nickname, watch status (online / offline / "Calming now"),
    today's sessions and minutes, a dot timeline of today's tantrums by hour.
 2. Child page (/teacher/child/:id), three tabs:
-   - Today: timeline of today's tantrums (time, trigger, duration, helped). Each tantrum has
+   - Today: timeline of today's tantrums (time, scene title, trigger, duration, and the rating:
+     "Helped" / "Didn't help" / "Not rated", with "rated by <teacher name> at <time>" from
+     helped_by + helped_at). Teachers can rate unrated ones here too (update events.helped). Each tantrum has
      "Write note" / "Edit note" opening its journal entry, and shows the parent's questions
      under it with a reply box.
    - Day journal: one note per day (date picker, defaults to today), with its question thread.
@@ -74,10 +83,11 @@ Times in the browser's local time; days follow child_day_summary.day.
 1. Overview: a card per child with today's summary ("3 calm moments, 7 minutes"), watch
    status and battery, and the latest teacher note.
 2. Child page (/parent/child/:id):
-   - Today: tantrum timeline with the teacher's note under each, and an "Ask a question" box
+   - Today: tantrum timeline (time, scene, duration, the teacher's rating with who/when) with the teacher's note under each, and an "Ask a question" box
      on every note (writes journal_comments).
    - Journal: all day notes and tantrum notes, newest first, each with its thread.
-   - History: same 14-day chart and day list as the teacher view; "Did it help?" totals.
+   - History: same 14-day chart and day list as the teacher view; "Did it help?" totals, and a small
+     "What helps" list: scenes ranked by how often the teacher rated them helped.
    - Calm profile: the approved profile shown as friendly chips (theme, sound, breathing pace,
      vibration) plus calm_message and parent_summary. Read-only here; it is set in the iPhone app.
    Parents cannot write journal entries, only questions.

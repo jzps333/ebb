@@ -97,6 +97,7 @@ final class AppModel {
             try await self.reloadCalmProfiles()
             try await self.reloadUnrated()
         }
+        await loadSceneLibrary()
     }
 
     private func reloadCalmProfiles() async throws {
@@ -204,7 +205,7 @@ final class AppModel {
     // MARK: Weekly scenes
 
     var sceneLibrary: [CalmScene] = []
-    var unrated: [UUID: UnratedEvent] = [:]   // child id -> latest unrated calm moment
+    var latestMoment: [UUID: CalmMoment] = [:]   // child id -> latest finished calm moment
 
     func loadSceneLibrary() async {
         guard sceneLibrary.isEmpty else { return }
@@ -267,35 +268,76 @@ final class AppModel {
         }
     }
 
-    // MARK: Did it help?
+    // MARK: Did it help? (rated by the teacher)
 
+    private static let momentColumns = "id, child_id, started_at, ended_at, trigger, scene_id, helped, helped_at"
+
+    /// The latest finished calm moment per child, rated or not. The card only
+    /// ever asks about this one, so rating it never surfaces older moments.
     func reloadUnrated() async throws {
         let since = Date().addingTimeInterval(-7 * 24 * 3600)
-        let rows: [UnratedEvent] = try await client.from("events")
-            .select("id, child_id, started_at, trigger, scene_id")
+        let rows: [CalmMoment] = try await client.from("events")
+            .select(Self.momentColumns)
             .not("ended_at", operator: .is, value: "null")
-            .is("helped", value: nil)
             .gte("started_at", value: since)
             .order("started_at", ascending: false)
             .limit(50)
             .execute()
             .value
-        var latest: [UUID: UnratedEvent] = [:]
+        var latest: [UUID: CalmMoment] = [:]
         for e in rows where latest[e.childId] == nil { latest[e.childId] = e }
-        unrated = latest
+        latestMoment = latest
     }
 
-    /// Feeds the weekly scene picker: helped scenes stay, unhelpful ones rotate out.
-    func rate(_ event: UnratedEvent, helped: Bool) async {
+    /// Today's finished calm moments for one child, newest first.
+    func moments(for child: Child) async -> [CalmMoment] {
+        var rows: [CalmMoment] = []
+        let startOfDay = Calendar.current.startOfDay(for: Date())
+        await run {
+            rows = try await self.client.from("events")
+                .select(Self.momentColumns)
+                .eq("child_id", value: child.id)
+                .not("ended_at", operator: .is, value: "null")
+                .gte("started_at", value: startOfDay)
+                .order("started_at", ascending: false)
+                .execute()
+                .value
+        }
+        return rows
+    }
+
+    /// Saved with who rated it and when (a database trigger stamps both);
+    /// feeds the weekly scene picker.
+    func rate(_ moment: CalmMoment, helped: Bool) async {
         struct Rating: Encodable { let helped: Bool }
         await run {
             try await self.client.from("events")
                 .update(Rating(helped: helped))
-                .eq("id", value: event.id)
+                .eq("id", value: moment.id)
                 .execute()
             try await self.reloadUnrated()
             try await self.reloadToday()
         }
+    }
+
+    func sceneTitle(_ id: String?) -> String? {
+        guard let id else { return nil }
+        return sceneLibrary.first { $0.id == id }?.title
+    }
+
+    static func describe(_ m: CalmMoment, sceneTitle: String?) -> String {
+        let time = m.startedAt.formatted(date: .omitted, time: .shortened)
+        var parts = [time]
+        if let sceneTitle { parts.append(sceneTitle) }
+        parts.append("\(m.minutes) min")
+        switch m.trigger {
+        case "teacher": parts.append("started by teacher")
+        case "child_tap": parts.append("child asked")
+        case "motion": parts.append("movement")
+        case "noise": parts.append("loud room")
+        default: break
+        }
+        return parts.joined(separator: " · ")
     }
 
     // MARK: Parent voice (ElevenLabs, via the voice function)

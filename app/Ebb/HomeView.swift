@@ -89,15 +89,14 @@ struct ChildCard: View {
             .padding(.vertical, 4)
 
             // The teacher saw the calm moment at school, so the teacher rates it.
-            if model.profile?.isTeacher == true, let event = model.unrated[child.id] {
-                HStack {
-                    Text("Did the last calm moment help?").font(.subheadline)
-                    Spacer()
-                    Button { Task { await model.rate(event, helped: true) } } label: { Image(systemName: "hand.thumbsup") }
-                        .buttonStyle(.bordered)
-                    Button { Task { await model.rate(event, helped: false) } } label: { Image(systemName: "hand.thumbsdown") }
-                        .buttonStyle(.bordered)
-                }
+            if let moment = model.latestMoment[child.id] {
+                LatestMomentRow(moment: moment, canRate: model.profile?.isTeacher == true)
+            }
+
+            NavigationLink {
+                MomentsView(child: child)
+            } label: {
+                Label("Calm moments today", systemImage: "list.bullet.rectangle")
             }
 
             NavigationLink {
@@ -183,5 +182,79 @@ struct AlertBanner: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .animation(.spring, value: model.banner)
         }
+    }
+}
+
+/// The latest calm moment, which one it was, and its rating.
+struct LatestMomentRow: View {
+    @Environment(AppModel.self) private var model
+    let moment: CalmMoment
+    let canRate: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Last calm moment").font(.caption).foregroundStyle(.secondary)
+            Text(AppModel.describe(moment, sceneTitle: model.sceneTitle(moment.sceneId))).font(.subheadline)
+            RatingControl(moment: moment, canRate: canRate)
+        }
+    }
+}
+
+/// Thumbs for the teacher until rated; afterwards the rating, for everyone.
+struct RatingControl: View {
+    @Environment(AppModel.self) private var model
+    let moment: CalmMoment
+    let canRate: Bool
+
+    var body: some View {
+        if let helped = moment.helped {
+            Label(helped ? "Helped" : "Didn't help", systemImage: helped ? "hand.thumbsup.fill" : "hand.thumbsdown.fill")
+                .font(.footnote)
+                .foregroundStyle(helped ? .green : .orange)
+        } else if canRate {
+            HStack {
+                Text("Did it help?").font(.footnote)
+                Spacer()
+                Button { Task { await model.rate(moment, helped: true) } } label: { Image(systemName: "hand.thumbsup") }
+                    .buttonStyle(.bordered)
+                Button { Task { await model.rate(moment, helped: false) } } label: { Image(systemName: "hand.thumbsdown") }
+                    .buttonStyle(.bordered)
+            }
+        } else {
+            Text("Not rated yet").font(.footnote).foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// Today's calm moments with scene, length, trigger and rating; teachers rate here.
+struct MomentsView: View {
+    @Environment(AppModel.self) private var model
+    let child: Child
+    @State private var moments: [CalmMoment] = []
+    @State private var loading = true
+
+    var body: some View {
+        List {
+            if !loading && moments.isEmpty {
+                Text("No calm moments today.").foregroundStyle(.secondary)
+            }
+            ForEach(moments) { m in
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(AppModel.describe(m, sceneTitle: model.sceneTitle(m.sceneId)))
+                    RatingControl(moment: m, canRate: model.profile?.isTeacher == true)
+                }
+                .padding(.vertical, 2)
+            }
+        }
+        .navigationTitle("\(child.nickname) today")
+        .task { await reload() }
+        .refreshable { await reload() }
+        .onChange(of: model.latestMoment) { Task { await reload() } }
+    }
+
+    private func reload() async {
+        await model.loadSceneLibrary()
+        moments = await model.moments(for: child)
+        loading = false
     }
 }
