@@ -1,4 +1,5 @@
 #include <WiFi.h>
+#include <esp_sntp.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <time.h>
@@ -106,15 +107,24 @@ bool net_clock_ready()
 // the same millis() always gives the same string. Recomputing it each call
 // could round to a different second, and the server matches a session's start
 // and end reports by started_at.
+// True once SNTP has really synced. Before that the system clock may come from
+// the watch's RTC chip, which can be hours off: trusting it locked a 7-hour
+// error into every timestamp (and device-api dropped the samples as stale).
+bool net_clock_ok()
+{
+    static bool synced = false;
+    if (!synced && sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) synced = true;
+    return synced;
+}
+
 bool net_iso_time(uint32_t ms, char *out, size_t len)
 {
-    static int64_t boot_epoch_ms = 0;
-    if (boot_epoch_ms == 0) {
-        struct timeval tv;
-        gettimeofday(&tv, nullptr);
-        if (tv.tv_sec < 1700000000) return false;  // still 1970: NTP hasn't answered yet
-        boot_epoch_ms = (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000 - (int64_t)millis();
-    }
+    if (!net_clock_ok()) return false;
+    // Recomputed every call (not cached), so a later SNTP correction also
+    // fixes the times of samples taken before it.
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+    int64_t boot_epoch_ms = (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000 - (int64_t)millis();
     time_t t = (time_t)((boot_epoch_ms + ms) / 1000);
     struct tm tm;
     gmtime_r(&t, &tm);

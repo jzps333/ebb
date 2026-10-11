@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <FFat.h>
 #include "config.h"
+#include "net.h"
 #include "calm_mode.h"
 #include "commands.h"
 #include "pairing.h"
@@ -114,8 +115,8 @@ static int nth_sunday(int year, int month, int n)
 
 static bool ny_time(char *out, size_t len)
 {
+    if (!net_clock_ok()) return false;  // RTC chip time can be hours off until NTP
     time_t now = time(nullptr);
-    if (now < 1700000000) return false;  // NTP hasn't answered yet
     struct tm u;
     gmtime_r(&now, &u);
     int y = u.tm_year + 1900;

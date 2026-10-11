@@ -32,3 +32,6 @@ bool net_connected();      // also kicks a reconnect if WiFi has been down a whi
 //   other negatives are HTTPClient errors (-1 = could not connect / TLS failed).
 int net_get(const String &path, String &body_out);
 int net_post(const String &path, const String &json_body, String &body_out);
+
+// True once the clock has synced over the internet (not just from the RTC chip).
+bool net_clock_ok();
