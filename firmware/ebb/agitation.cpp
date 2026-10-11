@@ -38,7 +38,10 @@ struct Baseline {
 };
 // The child's normal starts from these until it has learned its own.
 static const Baseline PRIOR[2] = { {0.10f, 0.12f * 0.12f, PRIOR_N}, {55.0f, 6.0f * 6.0f, PRIOR_N} };
-static const float    STD_FLOOR[2] = { 0.08f, 4.0f };  // never trust a tiny variance
+static const float    STD_FLOOR[2] = { 0.18f, 4.0f };  // never trust a tiny variance
+// Below this repetitive-motion score, movement never counts as agitation, so a
+// baseline learned on a still table can't turn everyday arm movement into an alarm.
+static const float    MOTION_MIN_SCORE = 0.35f;
 static const uint32_t BASELINE_MAGIC = 0xEBBBA5E1;
 
 struct SavedBaseline {
@@ -250,7 +253,7 @@ void agitation_update()
     if (sim && z[MOTION] < SIM_TERM * s.motion_k) z[MOTION] = SIM_TERM * s.motion_k;
 
     float raw[2];
-    raw[MOTION] = (z[MOTION] > 0 ? z[MOTION] : 0) / s.motion_k;
+    raw[MOTION] = (z[MOTION] > 0 && (x[MOTION] >= MOTION_MIN_SCORE || sim)) ? z[MOTION] / s.motion_k : 0;
     // During calm the mic mostly hears the watch's own scene sound and voice,
     // so noise does not count until calm is over.
     raw[NOISE] = (isnan(z[NOISE]) || calm || z[NOISE] < 0) ? 0 : z[NOISE] / s.noise_k;
