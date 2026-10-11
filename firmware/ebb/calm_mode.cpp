@@ -137,8 +137,14 @@ static void limit_timer_cb(lv_timer_t *t)
 }
 
 // Tap anywhere on the calm screen to stop.
-static void calm_scr_clicked_cb(lv_event_t *e)
+// "I'm OK": the child ends calm themselves. Only this button stops calm on
+// the watch (a tap anywhere used to, which a restless child did by accident).
+static bool child_said_ok = false;
+static lv_obj_t *ok_btn = NULL;
+
+static void ok_btn_cb(lv_event_t *e)
 {
+    child_said_ok = true;
     stop_calm();
 }
 
@@ -165,7 +171,6 @@ void calm_mode_init()
     calm_scr = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(calm_scr, lv_color_hex(0x0B1A2A), 0);
     lv_obj_clear_flag(calm_scr, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_event_cb(calm_scr, calm_scr_clicked_cb, LV_EVENT_CLICKED, NULL);
 
     // Translucent so the scene shows through; a soft ring makes it readable
     // on bright footage.
@@ -194,6 +199,21 @@ void calm_mode_init()
     lv_obj_set_style_bg_opa(message_label, LV_OPA_50, 0);
     lv_obj_set_style_pad_ver(message_label, 6, 0);
     lv_obj_align(message_label, LV_ALIGN_BOTTOM_MID, 0, 0);
+
+    // "I'm OK": a soft pill above the message, big enough for small fingers.
+    ok_btn = lv_btn_create(calm_scr);
+    lv_obj_set_size(ok_btn, 120, 40);
+    lv_obj_set_style_radius(ok_btn, 20, 0);
+    lv_obj_set_style_bg_color(ok_btn, lv_color_white(), 0);
+    lv_obj_set_style_bg_opa(ok_btn, LV_OPA_80, 0);
+    lv_obj_set_style_shadow_width(ok_btn, 0, 0);
+    lv_obj_align(ok_btn, LV_ALIGN_BOTTOM_MID, 0, -34);
+    lv_obj_add_event_cb(ok_btn, ok_btn_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *ok_label = lv_label_create(ok_btn);
+    lv_label_set_text(ok_label, "I'm OK");
+    lv_obj_set_style_text_color(ok_label, lv_color_hex(0x0B1A2A), 0);
+    lv_obj_set_style_text_font(ok_label, &lv_font_montserrat_18, 0);
+    lv_obj_center(ok_label);
 
     step_timer = lv_timer_create(step_timer_cb, 4000, NULL);
     lv_timer_pause(step_timer);
@@ -304,9 +324,16 @@ void stop_calm()
     lv_anim_del(circle, size_cb);
     audio_stop();
     watch.stop();  // cut any vibration still playing
-    // "How do you feel now?" for 10 s, then back to whatever was showing.
-    // The end report goes out when it closes (checkin_done).
-    checkin_show(prev_scr ? prev_scr : lv_scr_act(), checkin_done);
+    if (child_said_ok) {
+        // The child already told us: no check-in, record it as "better".
+        child_said_ok = false;
+        lv_scr_load(prev_scr ? prev_scr : lv_scr_act());
+        event_log_ended(ended_ms, "better", ended_peak, ended_tier);
+    } else {
+        // "How do you feel now?" for 10 s, then back to whatever was showing.
+        // The end report goes out when it closes (checkin_done).
+        checkin_show(prev_scr ? prev_scr : lv_scr_act(), checkin_done);
+    }
 
     // The GIF decoder holds a full-screen buffer; free it between sessions.
     if (backdrop) {

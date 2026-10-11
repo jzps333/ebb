@@ -120,6 +120,16 @@ struct ChildCard: View {
     let child: Child
 
     private var device: Device? { model.devices[child.id] }
+
+    static func batteryIcon(_ pct: Int) -> String {
+        switch pct {
+        case ..<13: return "battery.0percent"
+        case ..<38: return "battery.25percent"
+        case ..<63: return "battery.50percent"
+        case ..<88: return "battery.75percent"
+        default: return "battery.100percent"
+        }
+    }
     private var summary: DaySummary? { model.today[child.id] }
     private var busy: Bool { model.sendingCommandFor == child.id }
     private var isTeacher: Bool { model.profile?.isTeacher == true }
@@ -133,7 +143,15 @@ struct ChildCard: View {
                     Text("Age \(child.ageBand.replacingOccurrences(of: "-", with: "–"))").font(.footnote).foregroundStyle(Ebb.inkSoft)
                 }
                 Spacer()
-                Image(systemName: "applewatch").font(.title3).foregroundStyle(Ebb.teal)
+                VStack(spacing: 2) {
+                    Image(systemName: "applewatch").font(.title3).foregroundStyle(Ebb.teal)
+                    if let pct = device?.batteryPct {
+                        Label("\(pct)%", systemImage: Self.batteryIcon(pct))
+                            .labelStyle(.titleAndIcon)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(pct <= 20 ? Color(hex: 0xB0553A) : Ebb.inkSoft)
+                    }
+                }
             }
 
             StatusChip(text: statusText)
