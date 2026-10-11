@@ -14,8 +14,9 @@ DATA (all already exist; row-level security limits rows to the teacher's own stu
 - public.child_day_summary: child_id, day (YYYY-MM-DD, America/New_York), sessions
 - Realtime is enabled on public.devices and public.sensor_samples: subscribe to UPDATE on
   devices and INSERT on sensor_samples and update tiles live, without reloading.
-- Start/stop calm: insert into public.commands { device_id, child_id, type:
-  "start_calm" | "stop_calm", created_by: auth user id } (same as the existing Start button).
+- Start/stop calm: insert into public.commands ONLY { device_id, child_id, type:
+  "start_calm" | "stop_calm" }. Do not send created_by, id or created_at: the database
+  fills them in (created_by = the signed-in user); sending them gives "permission denied".
 
 TILE (responsive grid: 4 columns desktop, 2 tablet, 1 phone)
 - Big nickname, age band ("Age 6–8"), and today's calm moments count.
