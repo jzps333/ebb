@@ -320,6 +320,48 @@ final class AppModel {
         }
     }
 
+    // MARK: Journal notes on calm moments (teachers write, parents read)
+
+    /// Notes for these calm moments, by event id.
+    func notes(for moments: [CalmMoment]) async -> [UUID: JournalNote] {
+        guard !moments.isEmpty else { return [:] }
+        var byEvent: [UUID: JournalNote] = [:]
+        await run {
+            let rows: [JournalNote] = try await self.client.from("journal_entries")
+                .select("id, event_id, author_id, body, updated_at")
+                .eq("kind", value: "event")
+                .in("event_id", values: moments.map(\.id))
+                .order("updated_at", ascending: false)
+                .execute()
+                .value
+            for r in rows { if let e = r.eventId, byEvent[e] == nil { byEvent[e] = r } }
+        }
+        return byEvent
+    }
+
+    /// Creates the teacher's note for a calm moment, or updates their existing one.
+    func saveNote(_ text: String, for moment: CalmMoment, existing: JournalNote?) async -> Bool {
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { return false }
+        var ok = false
+        await run {
+            if let existing, existing.authorId == self.client.auth.currentUser?.id {
+                struct Edit: Encodable { let body: String }
+                try await self.client.from("journal_entries")
+                    .update(Edit(body: body))
+                    .eq("id", value: existing.id)
+                    .execute()
+            } else {
+                struct New: Encodable { let child_id: UUID; let kind: String; let event_id: UUID; let body: String }
+                try await self.client.from("journal_entries")
+                    .insert(New(child_id: moment.childId, kind: "event", event_id: moment.id, body: body))
+                    .execute()
+            }
+            ok = true
+        }
+        return ok
+    }
+
     func sceneTitle(_ id: String?) -> String? {
         guard let id else { return nil }
         return sceneLibrary.first { $0.id == id }?.title

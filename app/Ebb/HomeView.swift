@@ -196,6 +196,41 @@ struct LatestMomentRow: View {
             Text("Last calm moment").font(.caption).foregroundStyle(.secondary)
             Text(AppModel.describe(moment, sceneTitle: model.sceneTitle(moment.sceneId))).font(.subheadline)
             RatingControl(moment: moment, canRate: canRate)
+            if canRate && moment.helped != nil {
+                Button("Add a journal note →") { writing = true }
+                    .font(.footnote)
+                    .buttonStyle(.borderless)
+            }
+        }
+        .sheet(isPresented: $writing) {
+            if let child = model.children.first(where: { $0.id == moment.childId }) {
+                NoteLoader(child: child, moment: moment)
+            }
+        }
+    }
+
+    @State private var writing = false
+}
+
+/// Fetches any existing note for the moment, then shows the note sheet.
+private struct NoteLoader: View {
+    @Environment(AppModel.self) private var model
+    let child: Child
+    let moment: CalmMoment
+    @State private var existing: JournalNote?
+    @State private var loaded = false
+
+    var body: some View {
+        Group {
+            if loaded {
+                JournalNoteSheet(child: child, moment: moment, existing: existing) {}
+            } else {
+                ProgressView()
+            }
+        }
+        .task {
+            existing = await model.notes(for: [moment])[moment.id]
+            loaded = true
         }
     }
 }
@@ -231,7 +266,11 @@ struct MomentsView: View {
     @Environment(AppModel.self) private var model
     let child: Child
     @State private var moments: [CalmMoment] = []
+    @State private var notes: [UUID: JournalNote] = [:]
     @State private var loading = true
+    @State private var writingFor: CalmMoment?
+
+    private var isTeacher: Bool { model.profile?.isTeacher == true }
 
     var body: some View {
         List {
@@ -241,7 +280,19 @@ struct MomentsView: View {
             ForEach(moments) { m in
                 VStack(alignment: .leading, spacing: 6) {
                     Text(AppModel.describe(m, sceneTitle: model.sceneTitle(m.sceneId)))
-                    RatingControl(moment: m, canRate: model.profile?.isTeacher == true)
+                    RatingControl(moment: m, canRate: isTeacher)
+                    if let note = notes[m.id] {
+                        Text(note.body)
+                            .font(.footnote)
+                            .padding(8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                    }
+                    if isTeacher {
+                        Button(notes[m.id] == nil ? "Add note" : "Edit note") { writingFor = m }
+                            .font(.footnote)
+                            .buttonStyle(.borderless)
+                    }
                 }
                 .padding(.vertical, 2)
             }
@@ -250,11 +301,86 @@ struct MomentsView: View {
         .task { await reload() }
         .refreshable { await reload() }
         .onChange(of: model.latestMoment) { Task { await reload() } }
+        .sheet(item: $writingFor) { m in
+            JournalNoteSheet(child: child, moment: m, existing: notes[m.id]) {
+                Task { await reload() }
+            }
+        }
     }
 
     private func reload() async {
         await model.loadSceneLibrary()
         moments = await model.moments(for: child)
+        notes = await model.notes(for: moments)
         loading = false
+    }
+}
+
+/// The teacher's journal note for one calm moment, with tap-to-add prompts.
+/// Saved to journal_entries, so it also shows on the parent's website.
+struct JournalNoteSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let child: Child
+    let moment: CalmMoment
+    let existing: JournalNote?
+    let onSaved: () -> Void
+
+    @State private var text = ""
+    @State private var saving = false
+
+    static let prompts = [
+        "What happened before: ",
+        "What helped: ",
+        "How it ended: ",
+        "Next time, try: ",
+    ]
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text(AppModel.describe(moment, sceneTitle: model.sceneTitle(moment.sceneId)))
+                        .font(.subheadline)
+                }
+                Section("Tap a prompt to add it") {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack {
+                            ForEach(Self.prompts, id: \.self) { p in
+                                Button(p.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: ":"))) {
+                                    text += (text.isEmpty || text.hasSuffix("\n") ? "" : "\n") + p
+                                }
+                                .buttonStyle(.bordered)
+                                .font(.footnote)
+                            }
+                        }
+                    }
+                }
+                Section {
+                    TextEditor(text: $text).frame(minHeight: 180)
+                } footer: {
+                    Text("\(child.nickname)'s parent can read this note and ask questions about it.")
+                }
+            }
+            .navigationTitle("Journal note")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        Task {
+                            saving = true
+                            if await model.saveNote(text, for: moment, existing: existing) {
+                                onSaved()
+                                dismiss()
+                            }
+                            saving = false
+                        }
+                    }
+                    .disabled(saving || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .onAppear { text = existing?.body ?? "" }
+        }
     }
 }

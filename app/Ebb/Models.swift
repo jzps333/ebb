@@ -262,3 +262,20 @@ struct CalmMoment: Decodable, Identifiable, Hashable {
         case helpedAt = "helped_at"
     }
 }
+
+// MARK: Journal
+
+struct JournalNote: Decodable, Identifiable, Hashable {
+    let id: UUID
+    let eventId: UUID?
+    let authorId: UUID
+    var body: String
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, body
+        case eventId = "event_id"
+        case authorId = "author_id"
+        case updatedAt = "updated_at"
+    }
+}
