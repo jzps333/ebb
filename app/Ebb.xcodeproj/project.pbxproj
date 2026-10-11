@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		01E1D3C6B900799A56CD898D /* DesktopView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CA4474473343E5E64657462 /* DesktopView.swift */; };
 		089D962CF8053E04C8DB8D4D /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 924BB9B4B603DF7D24459180 /* Theme.swift */; };
 		2525FAF1F7DC8B51265582FC /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CA0B2CD0C92B5F3CF3B8030 /* Config.swift */; };
 		36E2441EA9D2E9E48F49D2C8 /* EbbApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED5CA223F4EFCA52A1C5DB4B /* EbbApp.swift */; };
@@ -26,6 +27,7 @@
 
 /* Begin PBXFileReference section */
 		01DFA7BD92DB28B55C251156 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		0CA4474473343E5E64657462 /* DesktopView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopView.swift; sourceTree = "<group>"; };
 		1993824FB0E8887853F8C371 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		3021060DF83CD175072B3CDD /* ScenesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenesView.swift; sourceTree = "<group>"; };
 		84075EAA5C1A66C8565EA053 /* CalmProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalmProfileView.swift; sourceTree = "<group>"; };
@@ -78,6 +80,7 @@
 				D7DFDFDF3369EF270DAC3510 /* Assets.xcassets */,
 				84075EAA5C1A66C8565EA053 /* CalmProfileView.swift */,
 				8CA0B2CD0C92B5F3CF3B8030 /* Config.swift */,
+				0CA4474473343E5E64657462 /* DesktopView.swift */,
 				ED5CA223F4EFCA52A1C5DB4B /* EbbApp.swift */,
 				A100B18614FCEECE78AB428E /* HomeView.swift */,
 				01DFA7BD92DB28B55C251156 /* LoginView.swift */,
@@ -171,6 +174,7 @@
 				D569A223FCB24EA5D2A9A201 /* AssessmentView.swift in Sources */,
 				F34A37361E1214EDE985B097 /* CalmProfileView.swift in Sources */,
 				2525FAF1F7DC8B51265582FC /* Config.swift in Sources */,
+				01E1D3C6B900799A56CD898D /* DesktopView.swift in Sources */,
 				36E2441EA9D2E9E48F49D2C8 /* EbbApp.swift in Sources */,
 				80F72F1B11719DF71A4AA429 /* HomeView.swift in Sources */,
 				AAD520A30D167C11C4567DFF /* LoginView.swift in Sources */,

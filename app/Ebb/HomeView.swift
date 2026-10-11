@@ -91,6 +91,11 @@ struct AccountMenu: View {
                 VStack(alignment: .leading, spacing: 14) {
                     Text(model.profile?.displayName ?? "").font(.title2).foregroundStyle(Ebb.ink)
                     Text(model.profile?.isTeacher == true ? "Teacher" : "Parent").foregroundStyle(Ebb.inkSoft)
+                    Button("ebb Desktop") {
+                        isShowing = false
+                        model.showingDesktop = true
+                    }
+                    .buttonStyle(.ebbSecondary)
                     Button("Sign out") {
                         isShowing = false
                         Task { await model.signOut() }

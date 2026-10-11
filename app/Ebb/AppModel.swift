@@ -11,6 +11,8 @@ final class AppModel {
     let client = SupabaseClient(supabaseURL: Config.supabaseURL, supabaseKey: Config.supabaseKey)
 
     var isSignedIn = false
+    /// The "ebb Desktop" welcome screen, shown at launch and from the account menu.
+    var showingDesktop = true
     var isLoading = false
     var profile: Profile?
     var children: [Child] = []
