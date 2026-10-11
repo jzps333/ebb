@@ -9,7 +9,8 @@
 // Bump when the scene files in the bucket are replaced (same names, new
 // content): the watch then deletes its copies and downloads them again.
 // 2: space/shapes re-encoded with ffmpeg (Pillow's GIFs drew a see-through shape).
-static const int MEDIA_REV = 2;
+// 3: space is real footage (Earth spinning); the drawn starfield still showed it.
+static const int MEDIA_REV = 3;
 
 static void remove_all(const char *dir)
 {

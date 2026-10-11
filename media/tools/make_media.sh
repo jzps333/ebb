@@ -51,9 +51,11 @@ mkdir -p "$OUT/video" "$OUT/audio"
 video_loop "$RAW/ocean_waves.ogv"       4  ocean  "hqdn3d=6:6:12:12,gblur=sigma=0.7" 32
 video_loop "$RAW/forest_maple.mp4"      10 forest "hqdn3d=5:5:10:10,gblur=sigma=0.5" 40
 video_loop "$RAW/animals_clownfish.mp4" 2  animals
+video_loop "$RAW/space_earth.mp4"       2  space
 
-# Generated videos (no download, no licence)
-python3 tools/make_generated.py "$OUT/video"
+# Generated video (no download, no licence). Its starfield is replaced by real
+# footage above: drawn on the watch it showed a see-through artefact.
+python3 tools/make_generated.py "$OUT/video" shapes
 
 # Sounds
 audio_loop "$RAW/rain/2.ogg"          0  30 rain

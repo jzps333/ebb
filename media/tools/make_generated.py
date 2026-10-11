@@ -102,5 +102,8 @@ def shapes():
 
 
 OUT.mkdir(parents=True, exist_ok=True)
-starfield()
-shapes()
+wanted = set(sys.argv[2:]) or {"space", "shapes"}
+if "space" in wanted:
+    starfield()
+if "shapes" in wanted:
+    shapes()
