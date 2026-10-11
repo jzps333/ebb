@@ -3,7 +3,9 @@ soft floating shapes (shapes). Both loop seamlessly: every motion completes a
 whole number of cycles in the loop length."""
 import math
 import random
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
@@ -16,11 +18,20 @@ OUT = Path(sys.argv[1] if len(sys.argv) > 1 else "out/video")
 
 
 def save_gif(frames, name):
-    # One shared adaptive palette keeps colours steady from frame to frame.
-    pal = frames[0].convert("P", palette=Image.ADAPTIVE, colors=64)
-    paletted = [f.quantize(palette=pal, dither=Image.Dither.NONE) for f in frames]
-    path = OUT / f"{name}.gif"
-    paletted[0].save(path, save_all=True, append_images=paletted[1:], duration=1000 // FPS, loop=0, optimize=True)
+    # Encode with ffmpeg exactly like the downloaded scenes. Pillow's GIF
+    # writer stores frames in a way the watch's GIF decoder (LVGL gifdec)
+    # mishandles: a see-through shape showed on top of the starfield.
+    with tempfile.TemporaryDirectory() as tmp:
+        for i, f in enumerate(frames):
+            f.save(f"{tmp}/f{i:03d}.png")
+        path = OUT / f"{name}.gif"
+        subprocess.run([
+            "ffmpeg", "-v", "error", "-y", "-framerate", str(FPS), "-i", f"{tmp}/f%03d.png",
+            "-filter_complex",
+            "split[v][p];[p]palettegen=max_colors=48:stats_mode=full[pal];"
+            "[v][pal]paletteuse=dither=none:diff_mode=rectangle",
+            "-loop", "0", str(path),
+        ], check=True)
     print(f"video {name}: {path.stat().st_size // 1024}K")
 
 

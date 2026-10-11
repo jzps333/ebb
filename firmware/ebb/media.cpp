@@ -4,6 +4,40 @@
 #include "net.h"
 #include "profile_store.h"
 #include "secrets.h"
+#include <Preferences.h>
+
+// Bump when the scene files in the bucket are replaced (same names, new
+// content): the watch then deletes its copies and downloads them again.
+// 2: space/shapes re-encoded with ffmpeg (Pillow's GIFs drew a see-through shape).
+static const int MEDIA_REV = 2;
+
+static void remove_all(const char *dir)
+{
+    File d = FFat.open(dir);
+    if (!d) return;
+    for (File f = d.openNextFile(); f; f = d.openNextFile()) {
+        String path = String(dir) + "/" + f.name();
+        f.close();
+        FFat.remove(path);
+    }
+}
+
+// Once per boot: if the media revision changed, start from empty.
+static void check_revision()
+{
+    static bool checked = false;
+    if (checked) return;
+    checked = true;
+    Preferences prefs;
+    prefs.begin("ebb", false);
+    if (prefs.getInt("media_rev", 0) != MEDIA_REV) {
+        remove_all("/video");
+        remove_all("/audio");
+        prefs.putInt("media_rev", MEDIA_REV);
+        Serial.printf("[media] new media revision %d: re-downloading scenes\n", MEDIA_REV);
+    }
+    prefs.end();
+}
 
 bool media_has(const char *path)
 {
@@ -37,6 +71,7 @@ void media_sync()
     if (millis() - last_try < 15000 && last_try != 0) return;  // don't hammer on failures
     last_try = millis();
 
+    check_revision();
     CalmProfile p = profile_store_get();
     char path[40];
 
