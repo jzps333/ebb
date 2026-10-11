@@ -260,7 +260,11 @@ type Outbound = { id: number; to_phone: string; body: string; kind: string };
 
 async function drain(db: SupabaseClient): Promise<{ sent: number; failed: number }> {
   const secret = Deno.env.get("BRIDGE_SECRET") ?? "";
-  const sendUrl = Deno.env.get("PHOTON_SEND_URL") ?? `${Deno.env.get("SUPABASE_URL")}/functions/v1/photon-send`;
+  // Push sending is optional: with no PHOTON_SEND_URL the Mac bridge
+  // (photon-bridge/) collects texts from /outbox instead, and drain must not
+  // claim them (a failed push holds a text for its 2-minute lease).
+  const sendUrl = Deno.env.get("PHOTON_SEND_URL");
+  if (!sendUrl) return { sent: 0, failed: 0 };
   const texts = (await rpc<Outbound[]>(db, "ebb_text_claim_outbox", { p_limit: 5 })) ?? [];
   const ids: number[] = [];
   const errors: Record<string, string> = {};
