@@ -8,6 +8,12 @@
 //   -> { ok: true }
 // POST /functions/v1/messaging/inbound   { from: "+15551234567", text, message_id }
 //   -> { replies: ["…"] }                           the bridge sends these back
+// POST /functions/v1/messaging/drain     (no secret)
+//   -> { sent, failed }   sends queued texts now through the website's
+//      photon-send function (Lovable's Photon connector). Called by a database
+//      trigger whenever a text is queued, and every minute as a retry. It
+//      reveals nothing and only sends what is already queued, so it needs no
+//      secret; photon-send itself requires x-bridge-secret.
 //
 // Inbound texts from a confirmed phone are either a question about a child
 // (answered by Gemini from that child's data, limited to what the texter can
@@ -248,10 +254,51 @@ async function handleInbound(db: SupabaseClient, from: string, rawText: string, 
 }
 
 // ---------------------------------------------------------------------------
+// Drain: send queued texts through photon-send
+// ---------------------------------------------------------------------------
+type Outbound = { id: number; to_phone: string; body: string; kind: string };
+
+async function drain(db: SupabaseClient): Promise<{ sent: number; failed: number }> {
+  const secret = Deno.env.get("BRIDGE_SECRET") ?? "";
+  const sendUrl = Deno.env.get("PHOTON_SEND_URL") ?? `${Deno.env.get("SUPABASE_URL")}/functions/v1/photon-send`;
+  const texts = (await rpc<Outbound[]>(db, "ebb_text_claim_outbox", { p_limit: 20 })) ?? [];
+  const ids: number[] = [];
+  const errors: Record<string, string> = {};
+  // Login codes first (the claim already orders them), one at a time.
+  for (const t of texts) {
+    try {
+      const res = await fetch(sendUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-bridge-secret": secret },
+        body: JSON.stringify({ to_phone: t.to_phone, body: t.body, kind: t.kind }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (res.ok) ids.push(t.id);
+      else errors[String(t.id)] = `photon-send ${res.status}`;
+    } catch (err) {
+      errors[String(t.id)] = (err as Error)?.name ?? "send failed";
+    }
+  }
+  if (texts.length) await rpc(db, "ebb_text_mark_sent", { p_ids: ids, p_errors: errors });
+  return { sent: ids.length, failed: Object.keys(errors).length };
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "use POST" }, 405);
+  if (new URL(req.url).pathname.replace(/\/+$/, "").endsWith("/drain")) {
+    const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
+      auth: { persistSession: false },
+    });
+    try {
+      return json(await drain(db));
+    } catch (err) {
+      console.error("drain failed", (err as Error)?.message ?? "Error");
+      return json({ error: "server error" }, 500);
+    }
+  }
   if (!(await secretMatches(req.headers.get("x-bridge-secret")))) return json({ error: "unauthorized" }, 401);
 
   const route = new URL(req.url).pathname.replace(/\/+$/, "").split("/").pop();
