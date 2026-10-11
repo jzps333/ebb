@@ -14,49 +14,52 @@ struct CalmProfileView: View {
     private var p: CalmProfile { current.profile }
 
     var body: some View {
-        List {
-            Section {
-                BreathingPreview(profile: p)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 260)
-                    .listRowInsets(EdgeInsets())
+        EbbScreen {
+            HStack {
+                StatusChip(text: current.isApproved ? "Approved · On the watch" : "Draft · Review before sending")
+                Spacer()
             }
 
-            Section("Why these choices") {
-                Text(p.parentSummary)
+            BreathingPreview(profile: p)
+
+            EbbCard(title: "Why these choices") {
+                Text("Suggested choices").font(.footnote).foregroundStyle(Ebb.inkSoft)
+                Text(p.parentSummary).foregroundStyle(Ebb.ink)
             }
 
-            Section("Settings") {
-                row("Theme", Self.label(p.theme), "sparkles")
-                row("Breathing", Self.label(p.breathPattern), "wind")
-                row("Vibration", Self.label(p.vibration), "iphone.radiowaves.left.and.right")
-                row("Sound", p.sound == "none" ? "None" : "\(Self.label(p.sound)), \(p.volume) volume", "speaker.wave.2")
-                row("Starts on its own", Self.autoText(p), "figure.walk.motion")
+            EbbCard(title: "Settings") {
+                setting("Theme", Self.label(p.theme) + (p.colors.isEmpty ? "" : " · " + p.colors.map(Self.label).joined(separator: " + ")))
+                setting("Breathing", Self.label(p.breathPattern))
+                setting("Vibration", Self.label(p.vibration))
+                setting("Sound", p.sound == "none" ? "None" : "\(Self.label(p.sound)) · \(p.volume) volume")
+                setting("Starts on its own", Self.autoText(p))
             }
 
-            Section {
-                if current.isApproved {
-                    Label("Approved. The watch picks it up within a few seconds.", systemImage: "checkmark.seal.fill")
-                        .foregroundStyle(.green)
-                } else {
-                    Button {
-                        Task { approving = true; await model.approve(current); approving = false }
-                    } label: {
-                        HStack { Spacer(); Text(approving ? "Approving..." : "Approve and send to watch").bold(); Spacer() }
-                    }
-                    .disabled(approving)
+            if current.isApproved {
+                InsetPanel {
+                    Label("Approved. The watch picks it up within a few seconds.", systemImage: "checkmark.seal")
+                        .foregroundStyle(Ebb.teal)
                 }
-                Button("Answer the questions again") { retaking = true }
-            } footer: {
-                Text("Version \(current.version). Ebb is a support tool that works alongside \(child.nickname)'s care team.")
+            } else {
+                Button(approving ? "Approving..." : "Approve and send to watch") {
+                    Task { approving = true; await model.approve(current); approving = false }
+                }
+                .buttonStyle(.ebbPrimary)
+                .disabled(approving)
             }
+            Button("Answer the questions again") { retaking = true }
+                .buttonStyle(.ebbSecondary)
+            Footnote(text: "Version \(current.version). Ebb is a support tool that works alongside \(child.nickname)'s care team.")
         }
-        .navigationTitle("\(child.nickname)'s calm profile")
+        .ebbNavigation("\(child.nickname)'s calm profile")
         .navigationDestination(isPresented: $retaking) { AssessmentView(child: child) }
     }
 
-    private func row(_ title: String, _ value: String, _ icon: String) -> some View {
-        LabeledContent { Text(value) } label: { Label(title, systemImage: icon) }
+    private func setting(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title).font(.footnote).foregroundStyle(Ebb.inkSoft)
+            Text(value).foregroundStyle(Ebb.ink)
+        }
     }
 
     static func label(_ raw: String) -> String {
@@ -86,25 +89,16 @@ struct CalmProfileView: View {
 struct BreathingPreview: View {
     let profile: CalmProfile
     @State private var phase = "Breathe in"
-    @State private var scale: CGFloat = 0.45
+    @State private var scale: CGFloat = 0
 
     private var colors: [Color] { profile.colors.map(Self.color) }
     private var main: Color { colors.first ?? .teal }
 
     var body: some View {
-        ZStack {
-            LinearGradient(colors: [Color.black, main.opacity(0.35)], startPoint: .top, endPoint: .bottom)
-            Circle()
-                .fill(RadialGradient(colors: [colors.last ?? main, main], center: .center, startRadius: 5, endRadius: 120))
-                .frame(width: 200, height: 200)
-                .scaleEffect(scale)
-            VStack {
-                Spacer()
-                Text(profile.breathPattern == "none" ? "" : phase).font(.headline).foregroundStyle(.white.opacity(0.9))
-                Text(profile.calmMessage).font(.subheadline).foregroundStyle(.white).padding(.bottom, 14)
-            }
-        }
-        .task(id: profile) { await breathe() }
+        PreviewPanel(message: profile.calmMessage,
+                     phase: profile.breathPattern == "none" ? nil : phase,
+                     colors: colors, scale: scale)
+            .task(id: profile) { await breathe() }
     }
 
     /// Steps of (label, seconds, grow?) per pattern; nil grow = hold.
@@ -122,7 +116,7 @@ struct BreathingPreview: View {
             for (label, seconds, grow) in steps {
                 phase = label
                 if let grow {
-                    withAnimation(.easeInOut(duration: seconds)) { scale = grow ? 1.0 : 0.45 }
+                    withAnimation(.easeInOut(duration: seconds)) { scale = grow ? 1.0 : 0 }
                 }
                 try? await Task.sleep(for: .seconds(seconds))
                 if Task.isCancelled { return }
@@ -141,5 +135,37 @@ struct BreathingPreview: View {
         case "orange": return .orange
         default: return .teal
         }
+    }
+}
+
+/// Pale blue panel with the soft breathing circle and the calm message.
+struct PreviewPanel: View {
+    let message: String
+    var phase: String?
+    var colors: [Color] = []
+    var scale: CGFloat = 1
+
+    var body: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(LinearGradient(colors: colors.isEmpty ? [Color(hex: 0xC3DDE6)] : colors.map { $0.opacity(0.35) },
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .overlay(Circle().stroke(.white.opacity(0.6), lineWidth: 1))
+                    .frame(width: 176, height: 176)
+                    .scaleEffect(0.55 + 0.45 * scale)
+                if let phase { Text(phase).font(.subheadline).foregroundStyle(Ebb.chipText) }
+            }
+            .frame(height: 180)
+            Text(message)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Color(hex: 0x1D4A5C))
+                .multilineTextAlignment(.center)
+        }
+        .padding(.vertical, 28)
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity)
+        .background(Ebb.previewBlue, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color(hex: 0xB5D0DA), lineWidth: 1))
     }
 }

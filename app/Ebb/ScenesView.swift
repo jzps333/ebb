@@ -17,49 +17,56 @@ struct ScenesView: View {
     private var isParent: Bool { model.profile?.isTeacher != true }
 
     var body: some View {
-        List {
+        EbbScreen {
             if loading {
-                ProgressView()
+                ProgressView().tint(Ebb.teal).frame(maxWidth: .infinity).padding(.top, 40)
             } else if let set {
-                Section {
-                    ForEach(set.items, id: \.position) { item in
-                        sceneRow(item)
-                    }
-                } header: {
-                    Text("Week of \(Self.weekLabel(set.weekStart))")
-                } footer: {
-                    Text("The watch plays the next scene each time calm mode starts. ★ scenes stay every week; the others change based on the teacher's \"Did it help?\" ratings.")
+                HStack {
+                    StatusChip(text: set.isApproved ? "Approved · On the watch" : "Draft · Review before sending")
+                    Spacer()
                 }
+                PageTitle(text: "Week of \(Self.weekLabel(set.weekStart))",
+                          subtitle: "The watch plays the next scene each time calm mode starts.")
+
+                EbbCard(title: "This week's scenes", padding: 0) {
+                    ForEach(set.items, id: \.position) { item in
+                        sceneRow(item).padding(14)
+                        if item.position != set.items.last?.position { Divider().overlay(Ebb.cardBorder) }
+                    }
+                }
+                Footnote(text: "★ scenes stay every week; the others change based on the teacher's \"Did it help?\" ratings.")
 
                 if isParent {
-                    Section {
-                        if set.isApproved {
-                            Label("Approved. The watch has these within a few minutes.", systemImage: "checkmark.seal.fill")
-                                .foregroundStyle(.green)
-                            Button("Plan next week") { Task { await make() } }
-                        } else {
-                            Button {
-                                Task {
-                                    busy = true
-                                    await model.approve(set)
-                                    await reload()
-                                    busy = false
-                                }
-                            } label: {
-                                HStack { Spacer(); Text("Approve these scenes").bold(); Spacer() }
-                            }
-                            Button("Pick again") { Task { await make() } }
+                    if set.isApproved {
+                        InsetPanel {
+                            Label("Approved. The watch has these within a few minutes.", systemImage: "checkmark.seal")
+                                .foregroundStyle(Ebb.teal)
                         }
+                        Button("Plan next week") { Task { await make() } }.buttonStyle(.ebbSecondary)
+                    } else {
+                        Button(busy ? "Approving..." : "Approve these scenes") {
+                            Task {
+                                busy = true
+                                await model.approve(set)
+                                await reload()
+                                busy = false
+                            }
+                        }
+                        .buttonStyle(.ebbPrimary)
+                        Button("Pick again") { Task { await make() } }.buttonStyle(.ebbSecondary)
                     }
                 }
             } else {
-                Section {
-                    Text(isParent ? "No scenes yet." : "The parent hasn't picked scenes yet.")
-                    if isParent { Button("Pick this week's scenes") { Task { await make() } } }
+                PageTitle(text: "This week's scenes")
+                EbbCard(title: "Getting started") {
+                    Text(isParent ? "No scenes yet." : "The parent hasn't picked scenes yet.").foregroundStyle(Ebb.ink)
+                    if isParent {
+                        Button("Pick this week's scenes") { Task { await make() } }.buttonStyle(.ebbPrimary)
+                    }
                 }
             }
         }
-        .navigationTitle("\(child.nickname)'s scenes")
+        .ebbNavigation("\(child.nickname)'s scenes")
         .disabled(busy)
         .task {
             await model.loadSceneLibrary()
@@ -68,25 +75,33 @@ struct ScenesView: View {
         }
         .sheet(item: $swapping) { item in
             NavigationStack {
-                List(model.sceneLibrary) { scene in
-                    Button {
-                        Task {
-                            if let set { await model.swap(set, position: item.position, to: scene) }
-                            swapping = nil
-                            await reload()
-                        }
-                    } label: {
-                        HStack(spacing: 12) {
-                            AnimatedGIF(url: scene.previewURL).frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 10))
-                            VStack(alignment: .leading) {
-                                Text(scene.title)
-                                Text(Self.soundLabel(scene.sound)).font(.caption).foregroundStyle(.secondary)
+                EbbScreen {
+                    PageTitle(text: "Swap scene \(item.position)")
+                    ForEach(model.sceneLibrary) { scene in
+                        Button {
+                            Task {
+                                if let set { await model.swap(set, position: item.position, to: scene) }
+                                swapping = nil
+                                await reload()
                             }
+                        } label: {
+                            HStack(spacing: 12) {
+                                AnimatedGIF(url: scene.previewURL).frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 10))
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(scene.title).foregroundStyle(Ebb.ink)
+                                    Text(Self.soundLabel(scene.sound)).font(.caption).foregroundStyle(Ebb.inkSoft)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right").foregroundStyle(Ebb.teal)
+                            }
+                            .padding(12)
+                            .background(Ebb.card, in: RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Ebb.cardBorder, lineWidth: 1))
                         }
+                        .buttonStyle(.plain)
                     }
                 }
-                .navigationTitle("Swap scene")
-                .navigationBarTitleDisplayMode(.inline)
+                .ebbNavigation("Swap scene")
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { swapping = nil } } }
             }
         }
@@ -98,13 +113,20 @@ struct ScenesView: View {
             if let scene {
                 AnimatedGIF(url: scene.previewURL).frame(width: 72, height: 72).clipShape(RoundedRectangle(cornerRadius: 12))
             }
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(item.position). \(scene?.title ?? item.sceneId)\(item.isAnchor ? "  ★" : "")")
-                Text(Self.soundLabel(scene?.sound ?? "none")).font(.caption).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("\(item.position). \(scene?.title ?? item.sceneId)\(item.isAnchor ? "  ★" : "")").foregroundStyle(Ebb.ink)
+                Text(Self.soundLabel(scene?.sound ?? "none")).font(.caption).foregroundStyle(Ebb.inkSoft)
             }
             Spacer()
             if isParent && set?.isApproved != true {
-                Button("Swap") { swapping = item }.buttonStyle(.bordered)
+                Button("Swap") { swapping = item }
+                    .font(.subheadline)
+                    .foregroundStyle(Ebb.teal)
+                    .padding(.horizontal, 14)
+                    .frame(height: 36)
+                    .background(Ebb.card, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Ebb.cardBorder, lineWidth: 1))
+                    .buttonStyle(.plain)
             }
         }
     }
@@ -153,7 +175,7 @@ struct AnimatedGIF: UIViewRepresentable {
         let view = UIImageView()
         view.contentMode = .scaleAspectFill
         view.clipsToBounds = true
-        view.backgroundColor = .secondarySystemBackground
+        view.backgroundColor = UIColor(red: 0.86, green: 0.92, blue: 0.95, alpha: 1)
         view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         view.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         load(into: view)

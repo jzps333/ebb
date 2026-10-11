@@ -6,6 +6,8 @@ struct EbbApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var model = AppModel()
 
+    init() { EbbAppearance.apply() }
+
     var body: some Scene {
         WindowGroup {
             RootView()

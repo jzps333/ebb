@@ -13,46 +13,88 @@ struct LoginView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    TextField("Email", text: $email)
-                        .textContentType(.emailAddress)
-                        .keyboardType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    SecureField("Password", text: $password)
-                        .textContentType(creatingAccount ? .newPassword : .password)
-                }
-
+            EbbScreen {
+                if creatingAccount { createAccount } else { signIn }
+            }
+            .ebbNavigation("Ebb")
+            .toolbar {
                 if creatingAccount {
-                    Section("About you") {
-                        TextField("Your name", text: $name)
-                        Picker("I am a", selection: $role) {
-                            Text("Parent").tag("parent")
-                            Text("Teacher").tag("teacher")
-                        }
-                        .pickerStyle(.segmented)
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { creatingAccount = false; notice = nil } label: { Image(systemName: "chevron.left") }
                     }
-                }
-
-                Section {
-                    Button(creatingAccount ? "Create account" : "Sign in") {
-                        Task { await submit() }
-                    }
-                    .disabled(busy || email.isEmpty || password.count < 6)
-
-                    Button(creatingAccount ? "I already have an account" : "Create an account") {
-                        creatingAccount.toggle()
-                        notice = nil
-                    }
-                    .font(.footnote)
-                }
-
-                if let notice {
-                    Section { Text(notice).font(.footnote) }
                 }
             }
-            .navigationTitle("Ebb")
+        }
+    }
+
+    // MARK: Sign in
+
+    @ViewBuilder private var signIn: some View {
+        Image("EbbLogo")
+            .resizable()
+            .scaledToFit()
+            .frame(maxWidth: 302)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(hex: 0x3B5BA5), lineWidth: 1))
+            .frame(maxWidth: .infinity)
+
+        PageTitle(text: "A little support, together.",
+                  subtitle: "For the adults helping a child find a calmer moment.")
+
+        if let notice {
+            EbbCard(title: "Email confirmation") {
+                Text("Check your email").font(.title3).foregroundStyle(Ebb.ink)
+                Text(notice).foregroundStyle(Ebb.ink)
+            }
+        }
+
+        EbbCard(title: "Sign in") {
+            credentials
+            Button(busy ? "Signing in..." : "Sign in") { Task { await submit() } }
+                .buttonStyle(.ebbPrimary)
+                .disabled(busy || email.isEmpty || password.count < 6)
+        }
+
+        Button("Create an account") { creatingAccount = true; notice = nil }
+            .buttonStyle(.ebbSecondary)
+    }
+
+    // MARK: Create account
+
+    @ViewBuilder private var createAccount: some View {
+        PageTitle(text: "Create an account")
+        credentials
+        Footnote(text: "Use at least 6 characters.")
+
+        EbbCard(title: "About you") {
+            FieldLabel(text: "Your name")
+            TextField("Your name", text: $name).ebbField()
+            Text("I am a").foregroundStyle(Ebb.ink)
+            SegmentChoice(options: [("parent", "Parent"), ("teacher", "Teacher")], selection: $role)
+        }
+
+        Button(busy ? "Creating..." : "Create account") { Task { await submit() } }
+            .buttonStyle(.ebbPrimary)
+            .disabled(busy || email.isEmpty || password.count < 6)
+        Button("I already have an account") { creatingAccount = false; notice = nil }
+            .buttonStyle(.ebbSecondary)
+    }
+
+    @ViewBuilder private var credentials: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            FieldLabel(text: "Email")
+            TextField(text: $email, prompt: Text(verbatim: "you@example.com")) { Text("Email") }
+                .textContentType(.emailAddress)
+                .keyboardType(.emailAddress)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .ebbField()
+        }
+        VStack(alignment: .leading, spacing: 8) {
+            FieldLabel(text: "Password")
+            SecureField("Password", text: $password)
+                .textContentType(creatingAccount ? .newPassword : .password)
+                .ebbField()
         }
     }
 

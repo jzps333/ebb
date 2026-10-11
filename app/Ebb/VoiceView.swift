@@ -16,9 +16,9 @@ struct VoiceView: View {
     @State private var player = ClipPlayer()
 
     var body: some View {
-        List {
+        EbbScreen {
             if loading {
-                ProgressView()
+                ProgressView().tint(Ebb.teal).frame(maxWidth: .infinity).padding(.top, 40)
             } else if rerecording {
                 RecordVoiceSection(child: child) {
                     rerecording = false
@@ -27,56 +27,46 @@ struct VoiceView: View {
             } else if state?.hasVoice != true {
                 chooseVoiceSection
             } else {
-                Section {
-                    Label(state?.isStock == true ? "Calm AI voice (female)" : "Your own voice",
-                          systemImage: state?.isStock == true ? "sparkles" : "person.wave.2")
-                } header: {
-                    Text("Voice")
+                HStack {
+                    StatusChip(text: state?.isStock == true ? "Calm AI voice (female)" : "Your own voice")
+                    Spacer()
                 }
-                phrasesSection
                 clipsSection
-                Section {
-                    if state?.isStock == true {
-                        Button("Use my own voice instead") { rerecording = true }
-                    } else {
-                        Button("Record my voice again") { rerecording = true }
-                        Button("Use the calm AI voice instead") { Task { await useAIVoice() } }
-                    }
-                    Button(state?.isStock == true ? "Remove voice and clips" : "Delete my voice", role: .destructive) {
-                        Task {
-                            busy = true
-                            if await model.deleteVoice() { await reload() }
-                            busy = false
-                        }
-                    }
-                } footer: {
-                    Text("Removes every clip, including on the watch. Your own voice is also deleted from ElevenLabs.")
-                }
+                phrasesSection
+                manageSection
             }
         }
-        .navigationTitle("Your voice for \(child.nickname)")
+        .ebbNavigation("Your voice for \(child.nickname)")
         .task { await reload() }
         .disabled(busy)
     }
 
     /// First visit: a ready-made calm voice, or the parent's own.
-    private var chooseVoiceSection: some View {
-        Section {
-            Button {
-                Task { await useAIVoice() }
-            } label: {
-                Label("Use a calm AI voice (female)", systemImage: "sparkles")
-            }
-            Button {
-                rerecording = true
-            } label: {
-                Label("Record my own voice", systemImage: "mic")
-            }
-        } header: {
-            Text("Which voice should \(child.nickname) hear?")
-        } footer: {
+    @ViewBuilder private var chooseVoiceSection: some View {
+        PageTitle(text: "Which voice should \(child.nickname) hear?")
+        EbbCard(title: "A familiar, gentle voice") {
+            Image(systemName: "waveform")
+                .font(.system(size: 34, weight: .ultraLight))
+                .foregroundStyle(Ebb.teal)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
             Text("The AI voice is ready right away, with nothing recorded. Your own voice takes a one-minute recording and is copied by ElevenLabs only with your consent.")
+                .foregroundStyle(Ebb.ink)
         }
+        Button(busy ? "Setting up..." : "Use a calm AI voice (female)") { Task { await useAIVoice() } }
+            .buttonStyle(.ebbPrimary)
+        Button { rerecording = true } label: {
+            HStack {
+                Image(systemName: "mic")
+                Spacer()
+                Text("Record my own voice")
+                Spacer()
+                Image(systemName: "mic").hidden()
+            }
+            .padding(.horizontal, 18)
+        }
+        .buttonStyle(.ebbSecondary)
+        Footnote(text: "Your voice choice belongs to your parent account. You approve calming phrases separately for \(child.nickname)'s watch.")
     }
 
     private func useAIVoice() async {
@@ -85,73 +75,100 @@ struct VoiceView: View {
         busy = false
     }
 
-    private var phrasesSection: some View {
-        Section {
-            ForEach(phrases.indices, id: \.self) { i in
-                TextField("Phrase", text: $phrases[i])
-            }
-            .onDelete { phrases.remove(atOffsets: $0) }
-            if phrases.count < 8 {
+    @ViewBuilder private var phrasesSection: some View {
+        PageTitle(text: "Phrases (up to 8, short)")
+        ForEach(phrases.indices, id: \.self) { i in
+            VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    TextField("Add a short phrase", text: $newPhrase)
-                    Button("Add") {
-                        phrases.append(newPhrase.trimmingCharacters(in: .whitespaces))
-                        newPhrase = ""
-                    }
-                    .disabled(newPhrase.trimmingCharacters(in: .whitespaces).isEmpty)
+                    FieldLabel(text: "Phrase")
+                    Spacer()
+                    Button { phrases.remove(at: i) } label: { Image(systemName: "xmark").font(.footnote) }
+                        .foregroundStyle(Ebb.inkSoft)
+                        .buttonStyle(.plain)
                 }
+                TextField("Phrase", text: $phrases[i]).ebbField()
             }
-            Button {
-                Task {
-                    busy = true
-                    let cleaned = phrases.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                    if await model.makeVoiceClips(for: child, phrases: cleaned) != nil { await reload() }
-                    busy = false
-                }
-            } label: {
-                HStack {
-                    if busy { ProgressView().padding(.trailing, 6) }
-                    Text(busy ? "Making clips in your voice..." : "Make clips").bold()
-                }
-            }
-        } header: {
-            Text("Phrases (up to 8, short)")
-        } footer: {
-            Text("Keep them short and calm. New clips replace unapproved ones; approved clips stay until you remove them.")
         }
+        if phrases.count < 8 {
+            TextField("Add a short phrase", text: $newPhrase).ebbField()
+            Button("Add") {
+                phrases.append(newPhrase.trimmingCharacters(in: .whitespaces))
+                newPhrase = ""
+            }
+            .buttonStyle(.ebbSecondary)
+            .disabled(newPhrase.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+        Button(busy ? "Making clips in your voice..." : "Make clips") {
+            Task {
+                busy = true
+                let cleaned = phrases.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                if await model.makeVoiceClips(for: child, phrases: cleaned) != nil { await reload() }
+                busy = false
+            }
+        }
+        .buttonStyle(.ebbPrimary)
+        Footnote(text: "Keep them short and calm. New clips replace unapproved ones; approved clips stay until you remove them.")
     }
 
     @ViewBuilder private var clipsSection: some View {
         if let clips = state?.clips, !clips.isEmpty {
-            Section {
-                ForEach(clips) { clip in
-                    HStack {
+            PageTitle(text: "Listen, then approve",
+                      subtitle: "Only approved clips go to \(child.nickname)'s watch, where one plays quietly every few breaths.")
+            ForEach(clips) { clip in
+                EbbCard {
+                    HStack(spacing: 14) {
                         Button {
                             if let url = clip.url { player.play(url) }
                         } label: {
-                            Image(systemName: "play.circle.fill").font(.title2)
+                            Image(systemName: "play")
+                                .foregroundStyle(Ebb.teal)
+                                .frame(width: 48, height: 48)
+                                .background(Ebb.chip, in: Circle())
+                                .overlay(Circle().stroke(Ebb.selectedEdge, lineWidth: 1))
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.plain)
                         .disabled(clip.url == nil)
-
-                        Text(clip.phrase)
-                        Spacer()
-                        Toggle("Approved", isOn: Binding(
-                            get: { clip.isApproved },
-                            set: { on in
-                                Task {
-                                    if await model.setClip(clip, approved: on) { await reload() }
-                                }
-                            }
-                        ))
-                        .labelsHidden()
+                        Text(clip.phrase).foregroundStyle(Ebb.ink)
                     }
+                    Toggle(isOn: Binding(
+                        get: { clip.isApproved },
+                        set: { on in
+                            Task {
+                                if await model.setClip(clip, approved: on) { await reload() }
+                            }
+                        }
+                    )) {
+                        Text("Approved").font(.subheadline).foregroundStyle(Ebb.ink)
+                    }
+                    .tint(Ebb.teal)
                 }
-            } header: {
-                Text("Listen, then approve")
-            } footer: {
-                Text("Only approved clips go to \(child.nickname)'s watch, where one plays quietly every few breaths.")
             }
+        }
+    }
+
+    private var manageSection: some View {
+        EbbCard(title: "Your voice") {
+            if state?.isStock == true {
+                ActionRow(title: "Use my own voice instead") { rerecording = true }
+            } else {
+                ActionRow(title: "Record my voice again") { rerecording = true }
+                Divider().overlay(Ebb.cardBorder)
+                ActionRow(title: "Use the calm AI voice instead") { Task { await useAIVoice() } }
+            }
+            Divider().overlay(Ebb.cardBorder)
+            ActionRow(title: state?.isStock == true ? "Remove voice and clips" : "Delete my voice", icon: "trash") {
+                Task {
+                    busy = true
+                    if await model.deleteVoice() { await reload() }
+                    busy = false
+                }
+            }
+            Divider().overlay(Ebb.cardBorder)
+            Footnote(text: state?.isStock == true
+                     ? "Removes all clips across children on your parent account."
+                     : "Deletes your account-wide voice and all clips for every child.")
+            Footnote(text: "Removes every clip, including on the watch. Your own voice is also deleted from ElevenLabs.")
+            Footnote(text: "Watch changes sync about every 5 minutes when connected.")
         }
     }
 
@@ -175,53 +192,75 @@ private struct RecordVoiceSection: View {
     @State private var uploading = false
 
     var body: some View {
-        Section {
-            Toggle(isOn: $consent) {
+        PageTitle(text: "Record my own voice")
+        Button { consent.toggle() } label: {
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: consent ? "checkmark.square.fill" : "square")
+                    .font(.title2)
+                    .foregroundStyle(consent ? Ebb.selectedEdge : Ebb.inkSoft)
                 Text("This is my own voice. I agree to Ebb sending this recording to ElevenLabs to make a copy of my voice, used only for calming phrases I approve for \(child.nickname)'s watch. The recording itself is not kept, and I can delete my voice at any time.")
-                    .font(.footnote)
+                    .font(.subheadline)
+                    .foregroundStyle(Ebb.ink)
+                    .multilineTextAlignment(.leading)
             }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(consent ? Ebb.selected : Ebb.card, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(consent ? Ebb.selectedEdge : Ebb.cardBorder, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+
+        EbbCard(title: "Recording script") {
+            Text("Read this aloud, calmly, for about a minute").font(.title3).foregroundStyle(Ebb.ink)
+            Text(Self.script).foregroundStyle(Ebb.ink).lineSpacing(4)
         }
 
-        Section("Read this aloud, calmly, for about a minute") {
-            Text(Self.script).font(.callout)
+        if recorder.isRecording {
+            Button { recorder.stop() } label: {
+                HStack {
+                    Image(systemName: "stop")
+                    Spacer()
+                    Text("Stop \(recorder.elapsedText)")
+                    Spacer()
+                    Image(systemName: "stop").hidden()
+                }
+                .padding(.horizontal, 18)
+            }
+            .buttonStyle(.ebbPrimary)
+        } else {
+            Button { recorder.start() } label: {
+                HStack {
+                    Image(systemName: "mic")
+                    Spacer()
+                    Text(recorder.recordingURL == nil ? "Start recording" : "Record again")
+                    Spacer()
+                    Image(systemName: "mic").hidden()
+                }
+                .padding(.horizontal, 18)
+            }
+            .buttonStyle(recorder.recordingURL == nil ? AnyButtonStyle(.ebbPrimary) : AnyButtonStyle(.ebbSecondary))
+            .disabled(!consent)
         }
 
-        Section {
-            if recorder.isRecording {
-                Button(role: .destructive) { recorder.stop() } label: {
-                    Label("Stop  \(recorder.elapsedText)", systemImage: "stop.circle.fill")
+        if let url = recorder.recordingURL, !recorder.isRecording {
+            Button(uploading ? "Making your voice..." : "Use this recording (\(recorder.elapsedText))") {
+                Task {
+                    uploading = true
+                    if let data = try? Data(contentsOf: url), await model.cloneVoice(recording: data) {
+                        recorder.discard()  // not kept on the phone either
+                        await onDone()
+                    }
+                    uploading = false
                 }
-            } else {
-                Button { recorder.start() } label: {
-                    Label(recorder.recordingURL == nil ? "Start recording" : "Record again", systemImage: "mic.circle.fill")
-                }
-                .disabled(!consent)
             }
+            .buttonStyle(.ebbPrimary)
+            .disabled(uploading || recorder.seconds < 30)
+        }
 
-            if let url = recorder.recordingURL, !recorder.isRecording {
-                Button {
-                    Task {
-                        uploading = true
-                        if let data = try? Data(contentsOf: url), await model.cloneVoice(recording: data) {
-                            recorder.discard()  // not kept on the phone either
-                            await onDone()
-                        }
-                        uploading = false
-                    }
-                } label: {
-                    HStack {
-                        if uploading { ProgressView().padding(.trailing, 6) }
-                        Text(uploading ? "Making your voice..." : "Use this recording (\(recorder.elapsedText))").bold()
-                    }
-                }
-                .disabled(uploading || recorder.seconds < 30)
-            }
-        } footer: {
-            if let error = recorder.error {
-                Text(error).foregroundStyle(.red)
-            } else {
-                Text("A quiet room works best. At least 30 seconds; about a minute is ideal.")
-            }
+        if let error = recorder.error {
+            ErrorCard(title: "Microphone", message: error)
+        } else {
+            Footnote(text: "A quiet room works best. At least 30 seconds; about a minute is ideal. Recording stops at 2 minutes.")
         }
     }
 
@@ -314,4 +353,31 @@ final class ClipPlayer {
         player = AVPlayer(url: url)
         player?.play()
     }
+}
+
+/// Teal text button row with a trailing icon, inside a card.
+private struct ActionRow: View {
+    let title: String
+    var icon = "chevron.right"
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Text(title).foregroundStyle(Ebb.teal)
+                Spacer()
+                Image(systemName: icon).foregroundStyle(Ebb.teal)
+            }
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Lets one button switch between the two Ebb styles.
+private struct AnyButtonStyle: ButtonStyle {
+    private let make: (Configuration) -> AnyView
+    init<S: ButtonStyle>(_ style: S) { make = { AnyView(style.makeBody(configuration: $0)) } }
+    func makeBody(configuration: Configuration) -> some View { make(configuration) }
 }
