@@ -162,15 +162,62 @@ Not generative AI: the on-watch agitation detection (per-child baselines, z-scor
 autocorrelation) and the learning (Thompson sampling, empirical-Bayes forecast,
 sensitivity tuning) are classical statistics written by hand.
 
-### AI as a development tool
-We built Ebb with AI coding assistants and reviewed and tested the results ourselves on the
-real watch and phone:
-- **Claude (Claude Code)** helped write and debug most of the code in this repo: firmware
-  modules, the SwiftUI app, the Supabase schema and Edge Functions, the Photon bridge and the
-  demo video renderer. It also ran automated security reviews; the fixes are in
-  migrations 0016, 0021, 0022, 0024, 0025 and the messaging function.
-- **Lovable** generated the website from our prompts (`docs/lovable-*.md`).
-- The app screens were designed by our team as mockups first, then implemented to match.
+### AI as a development tool: who built what
+
+We were open about using AI assistants. Here is the honest split.
+
+**Written by Claude (Anthropic's Claude Code, as our coding assistant)**, directed, reviewed
+and tested by us on the real watch, phone and backend:
+- **All watch firmware** in `firmware/ebb/`: networking, pairing, calm mode, the motion and
+  noise signal processing, the agitation tiers and auto-start, telemetry, check-in, GPS,
+  the home screen. Also the bug fixes found on hardware (HTTPS clock, audio gain overflow,
+  the 7-hour RTC clock offset, motion sensitivity).
+- **The whole iPhone app** in `app/`, implemented from our team's UI mockups.
+- **The whole Supabase backend**: every migration in `supabase/migrations/` (schema,
+  row-level security, SQL functions, Thompson sampling, forecast, retention jobs) and every
+  Edge Function in `supabase/functions/`.
+- **The Photon iMessage bridge** (`photon-bridge/`), the AI prompts sent to Gemini, the
+  media pipeline scripts, the first Next.js prototype (`web/`), the demo video renderer
+  (`docs/demo-video/`), and the docs, including the prompts we pasted into Lovable.
+- **Security reviews**: automated reviews flagged issues that Claude then fixed
+  (migrations 0016, 0021, 0022, 0024, 0025; messaging and bridge hardening).
+
+**Made by our team:**
+- The idea, the problem framing, and every product decision (what the watch does, tiers,
+  privacy rules, teacher-only ratings, school-hours location, what texting may do).
+- **App UI design**: the 21 screen mockups (Frutiger-Aero / XP-inspired look) that the
+  app was built to match.
+- **The website** at useebb.tech, built by a teammate in **Lovable** (AI website builder)
+  on our Supabase backend, and the domain and DNS setup.
+- **Hardware bring-up and testing**: flashing and testing the watch, Wi-Fi and hotspot
+  setup, tuning on the wrist, end-to-end tests of pairing, alerts, texting and auto-start.
+- **Accounts and secrets**: Supabase project, Gemini and ElevenLabs keys, Photon project,
+  auth hook, all set up by us; no secret was ever given to the AI.
+- Choosing the calm scenes and sounds, the voice, the demo and the pitch.
+
+**Other AI services used during the build:** Lovable (website generation) and ElevenLabs
+(the demo video's voiceover, same voice as the watch).
+
+## Backend infrastructure we built
+
+All on one **Supabase** project (Postgres 17), plus three external APIs and a small bridge.
+
+| Layer | What we set up |
+|---|---|
+| **Database tables** (public, all with row-level security) | `profiles`, `children`, `child_members` (teacher links), `devices`, `pairing_sessions`, `commands`, `events`, `assessments`, `calm_profiles`, `scenes`, `scene_sets`, `scene_set_items`, `parent_voices`, `voice_clips`, `journal_entries`, `journal_comments`, `child_settings`, `sensor_samples`, `sensitivity_log`, `weekly_insights`, `locations` |
+| **View** | `child_day_summary` (per-day counts for dashboards) |
+| **Private tables** (no client access) | `pairing_attempts` (rate limit), `outbound_texts` (text outbox), `text_threads`, `processed_texts` |
+| **SQL functions (RPC)** | pairing (`pair_claim_watch`, `pair_join_watch`, `claim_watch`, `join_watch`, `add_teacher_by_email`), `make_scene_set`, `scene_stats`, `child_pattern_stats`, `risk_forecast`, texting (`ebb_text_*`, service role only) |
+| **Triggers** | rating log stamp, sensitivity self-tuning, child settings on new child, GPS-off erase, journal → text relay, text outbox → send |
+| **Auth** | Email + password, phone sign-in by one-time code; custom **Send SMS hook** (Edge Function) delivers codes over iMessage instead of Twilio |
+| **Realtime** | `events`, `devices`, `sensor_samples`, `journal_entries`, `journal_comments` |
+| **Storage** | `scene-media` (public: scene videos and sounds for the watch), `voice-clips` (private: signed URLs only) |
+| **Edge Functions (Deno)** | `device-api`, `generate-profile`, `insights`, `voice`, `sms-hook`, `messaging` (`demo-narration` retired) |
+| **Scheduled jobs** (`pg_cron`, `pg_net`) | `ebb-retention` hourly (sensor samples after 2 days, locations after 30 days); `ebb-text-drain` every minute (retry queued texts) |
+| **Secrets** | Function secrets (Gemini, ElevenLabs, bridge, SMS hook) and a database-generated **Vault** secret for the text drain |
+| **External APIs** | Google Gemini, ElevenLabs, Photon (iMessage) |
+| **Bridge** | `photon-bridge/`: Node process holding Photon's persistent connection |
+| **Website hosting** | Lovable, on the custom domain useebb.tech |
 
 ## Running it
 
