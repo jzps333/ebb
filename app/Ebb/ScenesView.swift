@@ -28,7 +28,7 @@ struct ScenesView: View {
                 } header: {
                     Text("Week of \(Self.weekLabel(set.weekStart))")
                 } footer: {
-                    Text("The watch plays the next scene each time calm mode starts. ★ scenes stay every week; the others change based on what helped.")
+                    Text("The watch plays the next scene each time calm mode starts. ★ scenes stay every week; the others change based on the teacher's \"Did it help?\" ratings.")
                 }
 
                 if isParent {

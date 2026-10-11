@@ -88,7 +88,8 @@ struct ChildCard: View {
             }
             .padding(.vertical, 4)
 
-            if let event = model.unrated[child.id] {
+            // The teacher saw the calm moment at school, so the teacher rates it.
+            if model.profile?.isTeacher == true, let event = model.unrated[child.id] {
                 HStack {
                     Text("Did the last calm moment help?").font(.subheadline)
                     Spacer()
