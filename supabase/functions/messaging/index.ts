@@ -8,12 +8,12 @@
 //   -> { ok: true }
 // POST /functions/v1/messaging/inbound   { from: "+15551234567", text, message_id }
 //   -> { replies: ["…"] }                           the bridge sends these back
-// POST /functions/v1/messaging/drain     (no secret)
+// POST /functions/v1/messaging/drain     header x-drain-secret
 //   -> { sent, failed }   sends queued texts now through the website's
 //      photon-send function (Lovable's Photon connector). Called by a database
-//      trigger whenever a text is queued, and every minute as a retry. It
-//      reveals nothing and only sends what is already queued, so it needs no
-//      secret; photon-send itself requires x-bridge-secret.
+//      trigger whenever a text is queued, and every minute as a retry; both
+//      send the Vault secret ebb_drain_secret (migration 0024), checked by
+//      ebb_text_drain_ok. photon-send itself requires x-bridge-secret.
 //
 // Inbound texts from a confirmed phone are either a question about a child
 // (answered by Gemini from that child's data, limited to what the texter can
@@ -261,7 +261,7 @@ type Outbound = { id: number; to_phone: string; body: string; kind: string };
 async function drain(db: SupabaseClient): Promise<{ sent: number; failed: number }> {
   const secret = Deno.env.get("BRIDGE_SECRET") ?? "";
   const sendUrl = Deno.env.get("PHOTON_SEND_URL") ?? `${Deno.env.get("SUPABASE_URL")}/functions/v1/photon-send`;
-  const texts = (await rpc<Outbound[]>(db, "ebb_text_claim_outbox", { p_limit: 20 })) ?? [];
+  const texts = (await rpc<Outbound[]>(db, "ebb_text_claim_outbox", { p_limit: 5 })) ?? [];
   const ids: number[] = [];
   const errors: Record<string, string> = {};
   // Login codes first (the claim already orders them), one at a time.
@@ -271,7 +271,7 @@ async function drain(db: SupabaseClient): Promise<{ sent: number; failed: number
         method: "POST",
         headers: { "Content-Type": "application/json", "x-bridge-secret": secret },
         body: JSON.stringify({ to_phone: t.to_phone, body: t.body, kind: t.kind }),
-        signal: AbortSignal.timeout(15_000),
+        signal: AbortSignal.timeout(10_000),
       });
       if (res.ok) ids.push(t.id);
       else errors[String(t.id)] = `photon-send ${res.status}`;
@@ -293,6 +293,8 @@ Deno.serve(async (req) => {
       auth: { persistSession: false },
     });
     try {
+      const ok = await rpc<boolean>(db, "ebb_text_drain_ok", { p_secret: req.headers.get("x-drain-secret") ?? "" });
+      if (!ok) return json({ error: "unauthorized" }, 401);
       return json(await drain(db));
     } catch (err) {
       console.error("drain failed", (err as Error)?.message ?? "Error");
