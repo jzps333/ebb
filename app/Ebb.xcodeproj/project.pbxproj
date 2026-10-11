@@ -13,6 +13,7 @@
 		68BDDBA5FB68F7758193E342 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D369C2595ACC2B42995E7FD /* Models.swift */; };
 		763CE23A2E4133D4C2D19555 /* PairView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8516F308A385E28E8444DCBD /* PairView.swift */; };
 		80F72F1B11719DF71A4AA429 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100B18614FCEECE78AB428E /* HomeView.swift */; };
+		813CB8AFCE10E22E73149B06 /* ScenesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3021060DF83CD175072B3CDD /* ScenesView.swift */; };
 		933AA46E4B502533D12DFD3C /* VoiceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE6C86881385D5F886B0C207 /* VoiceView.swift */; };
 		AAD520A30D167C11C4567DFF /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01DFA7BD92DB28B55C251156 /* LoginView.swift */; };
 		C3C8320E925F9777E323C303 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C233FAEB373C24F203BBB5 /* AppModel.swift */; };
@@ -24,6 +25,7 @@
 /* Begin PBXFileReference section */
 		01DFA7BD92DB28B55C251156 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		1993824FB0E8887853F8C371 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
+		3021060DF83CD175072B3CDD /* ScenesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenesView.swift; sourceTree = "<group>"; };
 		84075EAA5C1A66C8565EA053 /* CalmProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalmProfileView.swift; sourceTree = "<group>"; };
 		8516F308A385E28E8444DCBD /* PairView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairView.swift; sourceTree = "<group>"; };
 		8CA0B2CD0C92B5F3CF3B8030 /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
@@ -77,6 +79,7 @@
 				8D369C2595ACC2B42995E7FD /* Models.swift */,
 				8516F308A385E28E8444DCBD /* PairView.swift */,
 				1993824FB0E8887853F8C371 /* QRScannerView.swift */,
+				3021060DF83CD175072B3CDD /* ScenesView.swift */,
 				FE6C86881385D5F886B0C207 /* VoiceView.swift */,
 			);
 			path = Ebb;
@@ -156,6 +159,7 @@
 				68BDDBA5FB68F7758193E342 /* Models.swift in Sources */,
 				763CE23A2E4133D4C2D19555 /* PairView.swift in Sources */,
 				4F05662AC9174AD8C4E7B1C9 /* QRScannerView.swift in Sources */,
+				813CB8AFCE10E22E73149B06 /* ScenesView.swift in Sources */,
 				933AA46E4B502533D12DFD3C /* VoiceView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

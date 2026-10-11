@@ -7,7 +7,8 @@
 // trigger: "teacher", "motion", "noise" or "child_tap" (matches the events table).
 // command_id: the teacher command's id, or "" when the watch started on its own.
 // Called from the main loop (calm_mode).
-void event_log_started(const char *trigger, const char *command_id);
+// scene_id: the weekly scene that played ("" if none), for per-scene "did it help".
+void event_log_started(const char *trigger, const char *command_id, const char *scene_id = "");
 void event_log_ended();
 
 // Sends anything waiting. Called from the network task only (it blocks on HTTP).

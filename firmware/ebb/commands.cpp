@@ -8,6 +8,7 @@
 #include "profile_store.h"
 #include "media.h"
 #include "voice.h"
+#include "scenes.h"
 
 enum CommandType : uint8_t { CMD_START_CALM, CMD_STOP_CALM };
 
@@ -79,6 +80,7 @@ static void poll_task(void *arg)
                 parse_poll_response(body);
                 media_sync();  // fetch the profile's scene video and sound if missing
                 voice_sync();  // parent's approved voice clips, every few minutes
+                scenes_sync(); // this week's approved scenes, every few minutes
             } else if (code != -100 && code != -102) {  // WiFi / clock not ready yet: not worth logging
                 Serial.printf("[commands] poll failed: %d %s\n", code, body.c_str());
             }

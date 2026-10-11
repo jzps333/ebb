@@ -6,6 +6,7 @@
 #include "media.h"
 #include "audio_player.h"
 #include "voice.h"
+#include "scenes.h"
 
 // Calm mode follows the approved calm profile (profile_store):
 //   theme          -> looping scene video in the background (/video/<theme>.gif)
@@ -193,15 +194,24 @@ void start_calm(const char *trigger, const char *command_id)
 {
     if (running || !calm_scr) return;
     running = true;
-    event_log_started(trigger, command_id);
-    limit_timer = lv_timer_create(limit_timer_cb, CALM_MAX_MS, NULL);
 
     profile = profile_store_get();
     pick_pattern(profile.breath_pattern);
 
+    // This week's next scene; without an approved set, the profile's own
+    // theme and sound. Breathing, vibration, colours, message and volume
+    // always come from the profile.
+    Scene scene;
+    bool from_set = scenes_next(scene);
+    const char *video = from_set ? scene.video : profile.theme;
+    const char *sound = from_set ? scene.sound : profile.sound;
+    event_log_started(trigger, command_id, from_set ? scene.id : "");
+    limit_timer = lv_timer_create(limit_timer_cb, CALM_MAX_MS, NULL);
+    if (from_set) Serial.printf("[calm_mode] scene %s\n", scene.id);
+
     // Scene video behind everything, if it has been downloaded yet.
     char path[40];
-    snprintf(path, sizeof(path), "/video/%s.gif", profile.theme);
+    snprintf(path, sizeof(path), "/video/%s.gif", video);
     if (media_has(path)) {
         char lv_path[44];
         snprintf(lv_path, sizeof(lv_path), "A:%s", path);
@@ -236,9 +246,10 @@ void start_calm(const char *trigger, const char *command_id)
         lv_timer_resume(voice_timer);
     }
 
+    // A sound-sensitive child's profile has volume "off": no scene sound, ever.
     float gain = volume_gain(profile.volume);
-    if (gain > 0 && strcmp(profile.sound, "none") != 0) {
-        snprintf(path, sizeof(path), "/audio/%s.mp3", profile.sound);
+    if (gain > 0 && strcmp(sound, "none") != 0) {
+        snprintf(path, sizeof(path), "/audio/%s.mp3", sound);
         audio_play_loop(path, gain);
     }
 }

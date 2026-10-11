@@ -88,6 +88,23 @@ struct ChildCard: View {
             }
             .padding(.vertical, 4)
 
+            if let event = model.unrated[child.id] {
+                HStack {
+                    Text("Did the last calm moment help?").font(.subheadline)
+                    Spacer()
+                    Button { Task { await model.rate(event, helped: true) } } label: { Image(systemName: "hand.thumbsup") }
+                        .buttonStyle(.bordered)
+                    Button { Task { await model.rate(event, helped: false) } } label: { Image(systemName: "hand.thumbsdown") }
+                        .buttonStyle(.bordered)
+                }
+            }
+
+            NavigationLink {
+                ScenesView(child: child)
+            } label: {
+                Label("This week's scenes", systemImage: "play.rectangle.on.rectangle")
+            }
+
             if model.profile?.isTeacher != true {
                 NavigationLink {
                     if let row = model.calmProfiles[child.id] {

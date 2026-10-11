@@ -9,6 +9,7 @@
 #include "profile_store.h"
 #include "audio_player.h"
 #include "voice.h"
+#include "scenes.h"
 
 // Temporary home screen until the ui module exists: a Start button, and
 // Serial shortcuts 's' / 'x' for start/stop. Connection details are on Serial.
@@ -86,6 +87,7 @@ void setup()
     profile_store_begin();
     audio_begin();
     voice_begin();
+    scenes_begin();
     calm_mode_init();
     pairing_begin(lv_scr_act());  // before commands_begin: loads the device token
     commands_begin();

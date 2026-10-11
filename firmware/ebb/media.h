@@ -9,5 +9,8 @@
 // that is not in flash yet. Does nothing when everything is present.
 void media_sync();
 
+// Network task: download one file into flash if it is not there yet.
+void media_ensure(const char *path);
+
 // True if the file exists in flash (path like "/video/ocean.gif").
 bool media_has(const char *path);

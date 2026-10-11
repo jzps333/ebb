@@ -32,6 +32,12 @@
 //      The parent-approved voice clips for this watch's child, from the private
 //      voice-clips bucket. The watch downloads new ones and drops removed ones.
 //
+// GET  /functions/v1/device-api/scenes
+//   -> { "week_start": "2026-10-05", "scenes": [ { "id": "space_rain", "video": "space", "sound": "rain" }, … ] }
+//      The newest parent-approved weekly set that has started (up to 6, in
+//      play order). Empty when none is approved yet: the watch then uses the
+//      calm profile's theme and sound. Events may carry "scene_id" back.
+//
 // Pairing (no Authorization header: the watch has no token yet)
 // POST /functions/v1/device-api/pair/start   { "hardware_id": "…" }
 //   -> { "code": "<20 chars>", "secret": "<64 hex>", "expires_in": 900 }
@@ -60,6 +66,7 @@ const supabase = createClient(
 const COMMAND_MAX_AGE_MS = 60_000;
 const PAIRING_WINDOW_S = 15 * 60;
 const TRIGGERS = new Set(["teacher", "motion", "noise", "child_tap"]);
+const SCENE_ID_RE = /^[a-z0-9_]{1,40}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Device = { id: string; child_id: string | null };
@@ -201,6 +208,7 @@ async function events(device: Device, req: Request): Promise<Response> {
       started_at: startedAt,
       noise_db: numberOrNull(raw.noise_db),
       motion_score: numberOrNull(raw.motion_score),
+      scene_id: typeof raw.scene_id === "string" && SCENE_ID_RE.test(raw.scene_id) ? raw.scene_id : null,
     };
 
     const { error } = endedAt
@@ -258,6 +266,29 @@ async function voice(device: Device): Promise<Response> {
     return { id: r.id, url: data?.signedUrl ?? null };
   }));
   return json({ clips: clips.filter((c) => c.url) });
+}
+
+async function scenes(device: Device): Promise<Response> {
+  if (!device.child_id) return json({ week_start: null, scenes: [] });
+  // "Today" in the school's time zone, so a new week starts Monday morning there.
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const { data: set, error } = await supabase
+    .from("scene_sets")
+    .select("week_start, scene_set_items(position, scenes(id, video, sound))")
+    .eq("child_id", device.child_id)
+    .eq("status", "approved")
+    .lte("week_start", today)
+    .order("week_start", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!set) return json({ week_start: null, scenes: [] });
+  type Item = { position: number; scenes: { id: string; video: string; sound: string } | null };
+  const items = ((set.scene_set_items ?? []) as unknown as Item[])
+    .filter((i) => i.scenes)
+    .sort((a, b) => a.position - b.position)
+    .map((i) => i.scenes!);
+  return json({ week_start: set.week_start, scenes: items });
 }
 
 async function readJson(req: Request): Promise<Record<string, unknown> | null> {
@@ -364,6 +395,7 @@ Deno.serve(async (req) => {
     if (route === "events" && req.method === "POST") return await events(device, req);
     if (route === "status" && req.method === "POST") return await status(device, req);
     if (route === "voice" && req.method === "GET") return await voice(device);
+    if (route === "scenes" && req.method === "GET") return await scenes(device);
     return json({ error: "not found" }, 404);
   } catch (err) {
     const e = err as { name?: string; code?: string };

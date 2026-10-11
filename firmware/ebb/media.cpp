@@ -58,7 +58,7 @@ static String media_url(const char *path)
     return base + (name ? name : path);
 }
 
-static void ensure(const char *path)
+void media_ensure(const char *path)
 {
     if (media_has(path)) return;
     Serial.printf("[media] downloading %s\n", path);
@@ -81,10 +81,10 @@ void media_sync()
     FFat.mkdir("/audio");
 
     snprintf(path, sizeof(path), "/video/%s.gif", p.theme);
-    ensure(path);
+    media_ensure(path);
 
     if (strcmp(p.sound, "none") != 0 && strcmp(p.volume, "off") != 0) {
         snprintf(path, sizeof(path), "/audio/%s.mp3", p.sound);
-        ensure(path);
+        media_ensure(path);
     }
 }

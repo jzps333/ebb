@@ -95,6 +95,7 @@ final class AppModel {
             try await self.reloadDevices()
             try await self.reloadToday()
             try await self.reloadCalmProfiles()
+            try await self.reloadUnrated()
         }
     }
 
@@ -197,6 +198,103 @@ final class AppModel {
                 .eq("id", value: row.id)
                 .execute()
             try await self.reloadCalmProfiles()
+        }
+    }
+
+    // MARK: Weekly scenes
+
+    var sceneLibrary: [CalmScene] = []
+    var unrated: [UUID: UnratedEvent] = [:]   // child id -> latest unrated calm moment
+
+    func loadSceneLibrary() async {
+        guard sceneLibrary.isEmpty else { return }
+        await run {
+            self.sceneLibrary = try await self.client.from("scenes")
+                .select("id, title, video, sound")
+                .order("id")
+                .execute()
+                .value
+        }
+    }
+
+    /// The newest set for the child (this week's, or next week's draft).
+    func sceneSet(for child: Child) async -> SceneSet? {
+        var result: SceneSet?
+        await run {
+            let sets: [SceneSet] = try await self.client.from("scene_sets")
+                .select("id, week_start, status, scene_set_items(position, is_anchor, scene_id)")
+                .eq("child_id", value: child.id)
+                .order("week_start", ascending: false)
+                .limit(1)
+                .execute()
+                .value
+            result = sets.first.map { set in
+                var sorted = set
+                sorted.items.sort { $0.position < $1.position }
+                return sorted
+            }
+        }
+        return result
+    }
+
+    /// Builds this week's set (or next week's, once this week's is approved).
+    func makeSceneSet(for child: Child) async -> SceneSet? {
+        struct Params: Encodable { let p_child_id: UUID }
+        await run {
+            _ = try await self.client.rpc("make_scene_set", params: Params(p_child_id: child.id)).execute()
+        }
+        return await sceneSet(for: child)
+    }
+
+    func approve(_ set: SceneSet) async {
+        struct Approval: Encodable { let status: String; let approved_at: Date }
+        await run {
+            try await self.client.from("scene_sets")
+                .update(Approval(status: "approved", approved_at: Date()))
+                .eq("id", value: set.id)
+                .execute()
+        }
+    }
+
+    func swap(_ set: SceneSet, position: Int, to scene: CalmScene) async {
+        struct Change: Encodable { let scene_id: String }
+        await run {
+            try await self.client.from("scene_set_items")
+                .update(Change(scene_id: scene.id))
+                .eq("set_id", value: set.id)
+                .eq("position", value: position)
+                .execute()
+        }
+    }
+
+    // MARK: Did it help?
+
+    func reloadUnrated() async throws {
+        let since = Date().addingTimeInterval(-7 * 24 * 3600)
+        let rows: [UnratedEvent] = try await client.from("events")
+            .select("id, child_id, started_at, trigger, scene_id")
+            .not("ended_at", operator: .is, value: "null")
+            .is("helped", value: nil)
+            .gte("started_at", value: since)
+            .order("started_at", ascending: false)
+            .limit(50)
+            .execute()
+            .value
+        var latest: [UUID: UnratedEvent] = [:]
+        for e in rows where latest[e.childId] == nil { latest[e.childId] = e }
+        unrated = latest
+    }
+
+    /// Feeds the weekly scene picker: helped scenes stay, unhelpful ones rotate out.
+    func rate(_ event: UnratedEvent, helped: Bool) async {
+        struct Rating: Encodable { let helped: Bool }
+        await run {
+            try await self.client.from("events")
+                .update(Rating(helped: helped))
+                .eq("id", value: event.id)
+                .execute()
+            try await self.reloadUnrated()
+            try await self.reloadToday()
         }
     }
 
@@ -356,7 +454,10 @@ final class AppModel {
                 for await insert in newEvents { await self?.calmStarted(insert.record) }
             },
             Task { [weak self] in
-                for await _ in changedEvents { try? await self?.reloadToday() }
+                for await _ in changedEvents {
+                    try? await self?.reloadToday()
+                    try? await self?.reloadUnrated()
+                }
             },
             Task { [weak self] in
                 for await _ in changedDevices { try? await self?.reloadDevices() }

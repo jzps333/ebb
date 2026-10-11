@@ -12,6 +12,7 @@
 struct Event {
     char     trigger[12];
     char     command_id[40];
+    char     scene_id[24];
     uint32_t started_ms;  // millis() when calm mode started
     uint32_t ended_ms;    // millis() when it ended (only if ended)
     bool     ended;
@@ -41,11 +42,12 @@ static void enqueue(const Event &e)
     commands_wake();  // send now instead of waiting for the next 3 s poll
 }
 
-void event_log_started(const char *trigger, const char *command_id)
+void event_log_started(const char *trigger, const char *command_id, const char *scene_id)
 {
     memset(&current, 0, sizeof(current));
     strlcpy(current.trigger, trigger, sizeof(current.trigger));
     strlcpy(current.command_id, command_id ? command_id : "", sizeof(current.command_id));
+    strlcpy(current.scene_id, scene_id ? scene_id : "", sizeof(current.scene_id));
     current.started_ms = millis();
     in_session = true;
     enqueue(current);
@@ -108,6 +110,7 @@ void event_log_flush()
         e["started_at"] = started_at;
         if (batch[i].ended && to_iso(batch[i].ended_ms, ended_at, sizeof(ended_at))) e["ended_at"] = ended_at;
         else                                                                         e["ended_at"] = nullptr;
+        if (batch[i].scene_id[0]) e["scene_id"] = batch[i].scene_id;
         e["noise_db"]     = nullptr;  // filled in once the noise module exists
         e["motion_score"] = nullptr;  // filled in once the motion module exists
     }

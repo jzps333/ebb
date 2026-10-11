@@ -195,3 +195,60 @@ struct VoiceState: Decodable {
         case voiceKind = "voice_kind"
     }
 }
+
+// MARK: Weekly scenes
+
+struct CalmScene: Decodable, Identifiable, Hashable {
+    let id: String
+    let title: String
+    let video: String
+    let sound: String
+
+    /// The looping GIF in the public scene-media bucket.
+    var previewURL: URL {
+        Config.supabaseURL.appendingPathComponent("storage/v1/object/public/scene-media/\(video).gif")
+    }
+}
+
+struct SceneSetItem: Decodable, Hashable {
+    let position: Int
+    let isAnchor: Bool
+    let sceneId: String
+
+    enum CodingKeys: String, CodingKey {
+        case position
+        case isAnchor = "is_anchor"
+        case sceneId = "scene_id"
+    }
+}
+
+struct SceneSet: Decodable, Identifiable {
+    let id: UUID
+    let weekStart: String
+    var status: String
+    var items: [SceneSetItem]
+
+    var isApproved: Bool { status == "approved" }
+
+    enum CodingKeys: String, CodingKey {
+        case id, status
+        case weekStart = "week_start"
+        case items = "scene_set_items"
+    }
+}
+
+/// The latest finished calm moment nobody has rated yet.
+struct UnratedEvent: Decodable, Identifiable {
+    let id: UUID
+    let childId: UUID
+    let startedAt: Date
+    let trigger: String
+    let sceneId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, trigger
+        case childId = "child_id"
+        case startedAt = "started_at"
+        case sceneId = "scene_id"
+    }
+}
