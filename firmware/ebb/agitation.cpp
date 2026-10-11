@@ -20,7 +20,7 @@ static const float    RISE_LEVEL     = 0.6f;
 static const float    CALM_LEVEL     = 1.0f;
 static const float    SETTLE_LEVEL   = 0.4f;
 static const uint32_t RISE_DWELL_MS  = 5000;
-static const uint32_t MOTION_DWELL_MS = 10000;
+static const uint32_t MOTION_DWELL_MS = 6000;
 static const uint32_t NOISE_DWELL_MS = 5000;
 static const uint32_t ADULT_AFTER_MS = 60000;
 static const uint32_t SETTLE_DWELL_MS = 10000;
@@ -175,8 +175,13 @@ static void run_tiers(const AdaptiveSettings &s, uint32_t now)
     // Timers for "above X since" / "below 0.4 since"; 0 = not. A millis()
     // of exactly 0 is stored as 1 so it still counts as set.
     uint32_t stamp = now ? now : 1;
-    rise_since   = level >= RISE_LEVEL ? (rise_since ? rise_since : stamp) : 0;
-    calm_since   = level >= CALM_LEVEL ? (calm_since ? calm_since : stamp) : 0;
+    // Hysteresis: real rocking and flapping come in bursts, so a timer starts
+    // when the level crosses its line and only resets once the level has
+    // clearly dropped (to 70% of the line), not on every brief dip.
+    if (level >= RISE_LEVEL) { if (!rise_since) rise_since = stamp; }
+    else if (level < RISE_LEVEL * 0.7f) rise_since = 0;
+    if (level >= CALM_LEVEL) { if (!calm_since) calm_since = stamp; }
+    else if (level < CALM_LEVEL * 0.7f) calm_since = 0;
     settle_since = level < SETTLE_LEVEL ? (settle_since ? settle_since : stamp) : 0;
 
     bool calm = calm_is_running();
