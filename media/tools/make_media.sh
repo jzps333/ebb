@@ -21,7 +21,7 @@ video_loop() {
   local in=$1 start=$2 name=$3 smooth=${4:-hqdn3d=3:3:8:8} colors=${5:-48}
   local len=$((LOOP + FADE))
   ffmpeg -v error -y -ss "$start" -t "$len" -i "$in" -filter_complex "
-    [0:v]fps=$FPS,scale=-2:$SIZE:flags=lanczos,crop=$SIZE:$SIZE,setsar=1,$smooth,split[a][b];
+    [0:v]fps=$FPS,scale=$SIZE:$SIZE:force_original_aspect_ratio=increase:flags=lanczos,crop=$SIZE:$SIZE,setsar=1,$smooth,split[a][b];
     [a]trim=$FADE:$len,setpts=PTS-STARTPTS[main];
     [b]trim=0:$FADE,setpts=PTS-STARTPTS[head];
     [main][head]xfade=transition=fade:duration=$FADE:offset=$((LOOP - FADE)),split[v][p];
@@ -47,15 +47,16 @@ audio_loop() {
 
 mkdir -p "$OUT/video" "$OUT/audio"
 
-# Videos from downloads (start times picked to avoid cuts and camera moves)
+# Videos from downloads (start times picked to avoid cuts and camera moves).
+# Scaled to cover 240x240 then centre-cropped, so landscape and portrait both work.
 video_loop "$RAW/ocean_waves.ogv"       4  ocean  "hqdn3d=6:6:12:12,gblur=sigma=0.7" 32
 video_loop "$RAW/forest_maple.mp4"      10 forest "hqdn3d=5:5:10:10,gblur=sigma=0.5" 40
 video_loop "$RAW/animals_clownfish.mp4" 2  animals
 video_loop "$RAW/space_earth.mp4"       2  space
 
-# Generated video (no download, no licence). Its starfield is replaced by real
-# footage above: drawn on the watch it showed a see-through artefact.
-python3 tools/make_generated.py "$OUT/video" shapes
+# shapes was drawn by tools/make_generated.py, but drawn GIFs showed a
+# see-through artefact on the watch, so it is real footage now too.
+video_loop "$RAW/shapes_pink_bubbles.mp4" 2 shapes
 
 # Sounds
 audio_loop "$RAW/rain/2.ogg"          0  30 rain

@@ -10,7 +10,8 @@
 // content): the watch then deletes its copies and downloads them again.
 // 2: space/shapes re-encoded with ffmpeg (Pillow's GIFs drew a see-through shape).
 // 3: space is real footage (Earth spinning); the drawn starfield still showed it.
-static const int MEDIA_REV = 3;
+// 4: shapes is real footage too (pink bubbles).
+static const int MEDIA_REV = 4;
 
 static void remove_all(const char *dir)
 {
