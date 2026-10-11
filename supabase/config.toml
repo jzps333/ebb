@@ -5,3 +5,12 @@
 # checks the token itself (hash lookup in devices.token_hash).
 [functions.device-api]
 verify_jwt = false
+
+# Supabase Auth "Send SMS" hook; authenticated by the Standard Webhooks
+# signature (SEND_SMS_HOOK_SECRET), not a user JWT.
+[functions.sms-hook]
+verify_jwt = false
+
+# Called only by photon-bridge/ with the x-bridge-secret header (BRIDGE_SECRET).
+[functions.messaging]
+verify_jwt = false

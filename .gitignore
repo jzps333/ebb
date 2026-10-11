@@ -31,3 +31,6 @@ DerivedData/
 
 # Downloaded source media (big); processed versions live in media/out
 media/raw/
+
+# Photon bridge
+photon-bridge/.env
