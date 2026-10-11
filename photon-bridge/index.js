@@ -112,6 +112,9 @@ async function handle(space, message) {
   const from = message.sender?.id;
   const text = message.content?.text ?? "";
   if (!from || !text.trim()) return;
+  // Email handles (x@icloud.com) are not phone numbers; the server rejects
+  // them too, but never forward one as a texter's identity.
+  if (from.includes("@")) return;
   console.log(`text from ${mask(from)}`);
   const { replies = [] } = await call("inbound", { from, text, message_id: message.id });
   for (const reply of replies) {

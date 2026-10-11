@@ -283,6 +283,11 @@ Deno.serve(async (req) => {
       const text = typeof body.text === "string" ? body.text : "";
       const messageId = typeof body.message_id === "string" ? body.message_id.slice(0, 200) : "";
       if (!from || !messageId) return json({ error: "from and message_id required" }, 400);
+      // Only a real phone number identifies a texter. iMessage handles can be
+      // emails ("x+15551234567@icloud.com"), which must never map to a phone.
+      if (!/^\+?[0-9 ()\-.]{7,24}$/.test(from.trim())) {
+        return json({ replies: ["Please text Ebb from your phone number, not an email address."] });
+      }
       if (!text.trim()) return json({ replies: [] });
       try {
         return json({ replies: await handleInbound(db, from, text, messageId) });
