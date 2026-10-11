@@ -4,3 +4,4 @@
 alter policy "events: linked users set helped" on public.events
   using (child_id in (select child_id from public.child_members where user_id = (select auth.uid())))
   with check (child_id in (select child_id from public.child_members where user_id = (select auth.uid())));
+
