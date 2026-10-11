@@ -20,6 +20,9 @@ final class AppModel {
     var today: [UUID: DaySummary] = [:]      // child id -> today's summary
     var calmProfiles: [UUID: CalmProfileRow] = [:]  // child id -> newest profile (draft or approved)
     var banner: String?                      // live "calm started" alert
+    var bannerIcon = "water.waves"           // escalation alerts use their own icon
+    var childSettings: [UUID: ChildSettings] = [:]  // child id -> what the watch follows
+    var samples: [UUID: [SensorSample]] = [:]       // child id -> last 10 min of readings (realtime)
     var errorMessage: String?
     var sendingCommandFor: UUID?             // child id while a Start/Stop is in flight
 
@@ -44,6 +47,8 @@ final class AppModel {
                     children = []
                     devices = [:]
                     today = [:]
+                    childSettings = [:]
+                    samples = [:]
                 }
             default:
                 break
@@ -68,6 +73,58 @@ final class AppModel {
             ready = response.session != nil
         }
         return ready
+    }
+
+    // MARK: Phone (codes go out by iMessage through Photon; see docs/photon-setup.md)
+
+    /// Texts a sign-in code. For a new number, name and role become the profile.
+    func sendPhoneCode(phone: String, name: String, role: String) async -> Bool {
+        var sent = false
+        await run {
+            try await self.client.auth.signInWithOTP(
+                phone: phone,
+                data: ["role": .string(role), "display_name": .string(name)]
+            )
+            sent = true
+        }
+        return sent
+    }
+
+    func verifyPhoneCode(phone: String, code: String) async {
+        await run { try await self.client.auth.verifyOTP(phone: phone, token: code, type: .sms) }
+    }
+
+    /// The signed-in user's confirmed phone, if any.
+    var phone: String? {
+        guard let p = client.auth.currentUser?.phone, !p.isEmpty else { return nil }
+        return "+" + p.trimmingCharacters(in: CharacterSet(charactersIn: "+"))
+    }
+
+    /// Adds a phone to an email account: texts a code, then confirmPhone.
+    func addPhone(_ phone: String) async -> Bool {
+        var sent = false
+        await run {
+            _ = try await self.client.auth.update(user: UserAttributes(phone: phone))
+            sent = true
+        }
+        return sent
+    }
+
+    func confirmPhone(_ phone: String, code: String) async -> Bool {
+        var ok = false
+        await run {
+            try await self.client.auth.verifyOTP(phone: phone, token: code, type: .phoneChange)
+            _ = try await self.client.auth.refreshSession()
+            ok = true
+        }
+        return ok
+    }
+
+    /// "(919) 555-0100" or "919 555 0100" -> "+19195550100"; keeps a leading +.
+    static func e164(_ raw: String) -> String {
+        let digits = raw.filter(\.isNumber)
+        if raw.trimmingCharacters(in: .whitespaces).hasPrefix("+") { return "+" + digits }
+        return digits.count == 10 ? "+1" + digits : "+" + digits
     }
 
     func signOut() async {
@@ -98,6 +155,7 @@ final class AppModel {
             try await self.reloadToday()
             try await self.reloadCalmProfiles()
             try await self.reloadUnrated()
+            try await self.reloadChildSettings()
         }
         await loadSceneLibrary()
     }
@@ -117,7 +175,7 @@ final class AppModel {
 
     private func reloadDevices() async throws {
         let rows: [Device] = try await client.from("devices")
-            .select("id, child_id, last_seen_at, battery_pct, calm_active")
+            .select("id, child_id, last_seen_at, battery_pct, calm_active, agitation, agitation_at, tier")
             .not("child_id", operator: .is, value: "null")
             .order("last_seen_at", ascending: false, nullsFirst: false)
             .execute()
@@ -127,7 +185,12 @@ final class AppModel {
         for device in rows {
             if let child = device.childId, byChild[child] == nil { byChild[child] = device }
         }
+        let previous = devices
         devices = byChild
+        for (childId, device) in byChild {
+            guard let before = previous[childId], before.id == device.id else { continue }
+            tierChanged(childId: childId, from: before.currentTier, to: device.currentTier)
+        }
     }
 
     private func reloadToday() async throws {
@@ -272,7 +335,8 @@ final class AppModel {
 
     // MARK: Did it help? (rated by the teacher)
 
-    private static let momentColumns = "id, child_id, started_at, ended_at, trigger, scene_id, helped, helped_at"
+    private static let momentColumns = "id, child_id, started_at, ended_at, trigger, scene_id, helped, helped_at, "
+        + "false_alarm, agitation_peak, child_feeling, agitation_before, agitation_after, recovery_seconds, tier"
 
     /// The latest finished calm moment per child, rated or not. The card only
     /// ever asks about this one, so rating it never surfaces older moments.
@@ -320,6 +384,215 @@ final class AppModel {
             try await self.reloadUnrated()
             try await self.reloadToday()
         }
+    }
+
+    /// An auto-start that should not have happened. The server makes that
+    /// signal less sensitive (see sensitivity_log) and leaves it out of the scene picker.
+    func markFalseAlarm(_ moment: CalmMoment) async {
+        struct Rating: Encodable { let false_alarm: Bool }
+        await run {
+            try await self.client.from("events")
+                .update(Rating(false_alarm: true))
+                .eq("id", value: moment.id)
+                .execute()
+            try await self.reloadUnrated()
+            try await self.reloadChildSettings()
+        }
+    }
+
+    /// "Agitation 0.92 → 0.31 · settled in 48 s · Sam felt better 🙂", or nil.
+    static func outcome(_ m: CalmMoment, name: String) -> String? {
+        var parts: [String] = []
+        if let before = m.agitationBefore, let after = m.agitationAfter {
+            parts.append(String(format: "Agitation %.2f → %.2f", before, after))
+        } else if let peak = m.agitationPeak {
+            parts.append(String(format: "Peak agitation %.2f", peak))
+        }
+        if let s = m.recoverySeconds {
+            parts.append("settled in " + (s < 90 ? "\(s) s" : "\(Int((Double(s) / 60).rounded())) min"))
+        }
+        switch m.childFeeling {
+        case "better": parts.append("\(name) felt better 🙂")
+        case "same": parts.append("\(name) felt the same 😐")
+        case "worse": parts.append("\(name) felt worse 🙁")
+        default: break
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    // MARK: Adaptive sensing (live agitation, auto-start, learned sensitivity)
+
+    private func reloadChildSettings() async throws {
+        let rows: [ChildSettings] = try await client.from("child_settings")
+            .select("child_id, auto_motion, auto_noise, motion_k, noise_k, gps_enabled, gps_consent_at")
+            .execute()
+            .value
+        childSettings = Dictionary(rows.map { ($0.childId, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    func refreshSettings() async {
+        await run { try await self.reloadChildSettings() }
+    }
+
+    /// Parent only (RLS); the watch picks the change up on its next poll.
+    func setAutoStart(for child: Child, motion: Bool, noise: Bool) async {
+        struct Change: Encodable { let auto_motion: Bool; let auto_noise: Bool }
+        await run {
+            try await self.client.from("child_settings")
+                .update(Change(auto_motion: motion, auto_noise: noise))
+                .eq("child_id", value: child.id)
+                .execute()
+            try await self.reloadChildSettings()
+        }
+    }
+
+    /// Parent only. Turning GPS on records consent now; turning it off makes
+    /// the server erase every point collected for this child.
+    func setGPS(for child: Child, enabled: Bool) async {
+        struct On: Encodable { let gps_enabled: Bool; let gps_consent_at: Date }
+        struct Off: Encodable { let gps_enabled: Bool }
+        await run {
+            if enabled {
+                try await self.client.from("child_settings")
+                    .update(On(gps_enabled: true, gps_consent_at: Date()))
+                    .eq("child_id", value: child.id)
+                    .execute()
+            } else {
+                try await self.client.from("child_settings")
+                    .update(Off(gps_enabled: false))
+                    .eq("child_id", value: child.id)
+                    .execute()
+            }
+            try await self.reloadChildSettings()
+        }
+    }
+
+    /// The last 10 minutes of readings; realtime inserts keep it going.
+    func loadSamples(for child: Child) async {
+        await run {
+            let rows: [SensorSample] = try await self.client.from("sensor_samples")
+                .select("id, child_id, at, motion, noise_db, motion_z, noise_z, agitation")
+                .eq("child_id", value: child.id)
+                .gte("at", value: Date().addingTimeInterval(-Self.liveWindow))
+                .order("at")
+                .limit(500)
+                .execute()
+                .value
+            self.samples[child.id] = rows
+        }
+    }
+
+    static let liveWindow: TimeInterval = 10 * 60
+
+    private func sampleArrived(_ sample: SensorSample) {
+        var rows = samples[sample.childId] ?? []
+        guard !rows.contains(where: { $0.id == sample.id }) else { return }
+        rows.append(sample)
+        if rows.count > 1 && rows[rows.count - 2].at > sample.at { rows.sort { $0.at < $1.at } }
+        let cutoff = Date().addingTimeInterval(-Self.liveWindow)
+        rows.removeAll { $0.at < cutoff }
+        samples[sample.childId] = rows
+    }
+
+    /// What the learning changed, newest first.
+    func sensitivityLog(for child: Child) async -> [SensitivityChange] {
+        var rows: [SensitivityChange] = []
+        await run {
+            rows = try await self.client.from("sensitivity_log")
+                .select("id, event_id, at, signal, old_k, new_k, reason")
+                .eq("child_id", value: child.id)
+                .order("at", ascending: false)
+                .limit(20)
+                .execute()
+                .value
+        }
+        return rows
+    }
+
+    // MARK: Patterns, scene stats, risk forecast, weekly report
+
+    func patternStats(for child: Child, days: Int = 28) async -> PatternStats? {
+        struct Params: Encodable { let p_child_id: UUID; let p_days: Int }
+        var result: PatternStats?
+        await run {
+            result = try await self.client.rpc("child_pattern_stats", params: Params(p_child_id: child.id, p_days: days))
+                .execute()
+                .value
+        }
+        return result
+    }
+
+    func sceneStats(for child: Child) async -> [SceneStat] {
+        struct Params: Encodable { let p_child_id: UUID }
+        var rows: [SceneStat] = []
+        await run {
+            rows = try await self.client.rpc("scene_stats", params: Params(p_child_id: child.id)).execute().value
+        }
+        return rows
+    }
+
+    func riskForecast(for child: Child, hours: Int = 8) async -> [RiskHour] {
+        struct Params: Encodable { let p_child_id: UUID; let p_hours: Int }
+        var rows: [RiskHour] = []
+        await run {
+            rows = try await self.client.rpc("risk_forecast", params: Params(p_child_id: child.id, p_hours: hours))
+                .execute()
+                .value
+        }
+        return rows
+    }
+
+    /// The newest AI weekly report, if one was written.
+    func weeklyInsight(for child: Child) async -> WeeklyInsight? {
+        var result: WeeklyInsight?
+        await run {
+            let rows: [WeeklyInsight] = try await self.client.from("weekly_insights")
+                .select("id, child_id, week_start, report, created_at")
+                .eq("child_id", value: child.id)
+                .order("week_start", ascending: false)
+                .limit(1)
+                .execute()
+                .value
+            result = rows.first
+        }
+        return result
+    }
+
+    /// Asks the insights function (Gemini) to write this week's report, then
+    /// reads the saved row back. Throws a readable message on failure.
+    func writeWeeklyInsight(for child: Child) async throws -> WeeklyInsight? {
+        struct Request: Encodable { let child_id: UUID }
+        do {
+            try await client.functions.invoke("insights", options: FunctionInvokeOptions(body: Request(child_id: child.id)))
+        } catch let FunctionsError.httpError(_, data) {
+            throw EbbError((try? JSONDecoder().decode(FunctionError.self, from: data))?.error ?? "Could not write the report.")
+        }
+        let rows: [WeeklyInsight] = try await client.from("weekly_insights")
+            .select("id, child_id, week_start, report, created_at")
+            .eq("child_id", value: child.id)
+            .order("week_start", ascending: false)
+            .limit(1)
+            .execute()
+            .value
+        return rows.first
+    }
+
+    // MARK: Location (opt-in GPS)
+
+    /// Points since `since`, oldest first. RLS hides them from teachers outside school hours.
+    func locations(for child: Child, since: Date) async -> [LocationPoint] {
+        var rows: [LocationPoint] = []
+        await run {
+            rows = try await self.client.from("locations")
+                .select("id, event_id, at, lat, lng, accuracy_m, kind")
+                .eq("child_id", value: child.id)
+                .gte("at", value: since)
+                .order("at")
+                .limit(1000)
+                .execute()
+                .value
+        }
+        return rows
     }
 
     // MARK: Journal notes on calm moments (teachers write, parents read)
@@ -526,6 +799,7 @@ final class AppModel {
         let newEvents = channel.postgresChange(InsertAction.self, schema: "public", table: "events")
         let changedEvents = channel.postgresChange(UpdateAction.self, schema: "public", table: "events")
         let changedDevices = channel.postgresChange(UpdateAction.self, schema: "public", table: "devices")
+        let newSamples = channel.postgresChange(InsertAction.self, schema: "public", table: "sensor_samples")
 
         do {
             try await channel.subscribeWithError()
@@ -548,6 +822,13 @@ final class AppModel {
             Task { [weak self] in
                 for await _ in changedDevices { try? await self?.reloadDevices() }
             },
+            Task { [weak self] in
+                for await insert in newSamples {
+                    if let sample = try? insert.decodeRecord(as: SensorSample.self, decoder: AnyJSON.decoder) {
+                        self?.sampleArrived(sample)
+                    }
+                }
+            },
         ]
     }
 
@@ -569,11 +850,33 @@ final class AppModel {
         let trigger = record["trigger"]?.stringValue ?? ""
         let message = "\(name) started calm mode" + Self.triggerSuffix(trigger)
 
-        banner = message
+        showBanner(message, icon: "water.waves")
         Notifier.post(title: "Calm mode started", body: message)
+    }
+
+    private func showBanner(_ message: String, icon: String, seconds: Double = 6) {
+        banner = message
+        bannerIcon = icon
         Task { [weak self] in
-            try? await Task.sleep(for: .seconds(6))
+            try? await Task.sleep(for: .seconds(seconds))
             if self?.banner == message { self?.banner = nil }
+        }
+    }
+
+    /// Escalation from the watch's tier machine: 3 means calm mode has not
+    /// settled the child after a minute, so an adult should go over; 1 is the
+    /// softer early warning (the wrist breathing cue has started).
+    private func tierChanged(childId: UUID, from old: Int, to new: Int) {
+        guard new != old else { return }
+        let name = children.first { $0.id == childId }?.nickname ?? "A student"
+        if new == 3 {
+            let message = "\(name) needs an adult"
+            showBanner(message, icon: "exclamationmark.triangle", seconds: 12)
+            Notifier.post(title: "Needs an adult", body: "\(message): calm mode has not settled things yet.")
+        } else if new == 1 && old == 0 {
+            let message = "\(name)'s agitation is rising"
+            showBanner(message, icon: "wind")
+            Notifier.post(title: "Agitation rising", body: "\(message). The watch has started a breathing cue.")
         }
     }
 
@@ -601,6 +904,13 @@ final class AppModel {
 
 /// The {"error": "..."} body our Edge Functions return on failure.
 private struct FunctionError: Decodable { let error: String }
+
+/// A failure with a message ready to show in an ErrorCard.
+struct EbbError: LocalizedError {
+    let message: String
+    init(_ message: String) { self.message = message }
+    var errorDescription: String? { message }
+}
 
 /// Local notifications for calm alerts. They show while the app is open or
 /// recently backgrounded; alerts with the app fully closed would need APNs push.

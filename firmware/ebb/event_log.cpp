@@ -1,11 +1,10 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <time.h>
-#include <sys/time.h>
 #include "event_log.h"
 #include "net.h"
 #include "commands.h"
 #include "config.h"
+#include "gps.h"
 
 // One report. A session produces two: the start (ended = false) and the end
 // (ended = true). Both carry the same started time, so the server can match them.
@@ -13,9 +12,16 @@ struct Event {
     char     trigger[12];
     char     command_id[40];
     char     scene_id[24];
+    char     child_feeling[8];  // "" = no answer
     uint32_t started_ms;  // millis() when calm mode started
     uint32_t ended_ms;    // millis() when it ended (only if ended)
     bool     ended;
+    float    motion;          // reading at the start
+    float    noise_db;        // NAN = no mic
+    float    agitation_peak;  // end report only; < 0 = unknown
+    int8_t   tier;            // end report only; 0 = none
+    bool     has_fix;         // start report only
+    GpsFix   fix;
 };
 
 // Written by the main loop, read by the network task, so every access to
@@ -42,77 +48,82 @@ static void enqueue(const Event &e)
     commands_wake();  // send now instead of waiting for the next 3 s poll
 }
 
-void event_log_started(const char *trigger, const char *command_id, const char *scene_id)
+void event_log_started(const char *trigger, const char *command_id, const char *scene_id,
+                       float motion, float noise_db)
 {
     memset(&current, 0, sizeof(current));
     strlcpy(current.trigger, trigger, sizeof(current.trigger));
     strlcpy(current.command_id, command_id ? command_id : "", sizeof(current.command_id));
     strlcpy(current.scene_id, scene_id ? scene_id : "", sizeof(current.scene_id));
-    current.started_ms = millis();
+    current.started_ms     = millis();
+    current.motion         = motion;
+    current.noise_db       = noise_db;
+    current.agitation_peak = -1;
+    current.has_fix        = gps_latest(current.fix);  // false unless gps_enabled and fresh
     in_session = true;
     enqueue(current);
 }
 
-void event_log_ended()
+void event_log_ended(uint32_t ended_ms, const char *child_feeling, float agitation_peak, int tier)
 {
     if (!in_session) return;
     in_session = false;
-    current.ended    = true;
-    current.ended_ms = millis();
+    current.ended          = true;
+    current.ended_ms       = ended_ms;
+    current.agitation_peak = agitation_peak;
+    current.tier           = tier;
+    current.has_fix        = false;  // the start report already placed the session
+    strlcpy(current.child_feeling, child_feeling ? child_feeling : "", sizeof(current.child_feeling));
     enqueue(current);
 }
 
-// Turns a millis() timestamp into "2026-10-10T18:22:01Z" using the clock
-// NTP set. Returns false until the clock has been set.
-//
-// The boot time (real clock minus millis) is worked out once and reused, so
-// the same millis() always gives the same string. Recomputing it each call
-// could round to a different second, and the server matches a session's start
-// and end reports by started_at.
-static bool to_iso(uint32_t ms, char *out, size_t len)
+static float round2(float v)
 {
-    static int64_t boot_epoch_ms = 0;
-    if (boot_epoch_ms == 0) {
-        struct timeval tv;
-        gettimeofday(&tv, nullptr);
-        if (tv.tv_sec < 1700000000) return false;  // still 1970: NTP hasn't answered yet
-        boot_epoch_ms = (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000 - (int64_t)millis();
-    }
-    time_t t = (time_t)((boot_epoch_ms + ms) / 1000);
-    struct tm tm;
-    gmtime_r(&t, &tm);
-    strftime(out, len, "%Y-%m-%dT%H:%M:%SZ", &tm);
-    return true;
+    return roundf(v * 100) / 100;
 }
 
 void event_log_flush()
 {
     // Copy what is waiting, so the HTTP call happens without holding the lock.
-    Event batch[EVENT_QUEUE_SIZE];
+    // Static: only the network task calls this, and it keeps 3 KB off its stack.
+    static Event batch[EVENT_QUEUE_SIZE];
     taskENTER_CRITICAL(&pending_mux);
     int n = pending_count;
     memcpy(batch, pending, sizeof(Event) * n);
     taskEXIT_CRITICAL(&pending_mux);
     if (n == 0) return;
 
-    // Shape from the plan:
-    // { "events": [ { "trigger": "teacher", "command_id": "…", "started_at": "…",
-    //                 "ended_at": "…", "noise_db": 62, "motion_score": 0.2 } ] }
+    // { "events": [ { "trigger": "motion", "command_id": null, "started_at": "…",
+    //                 "ended_at": "…", "noise_db": 62, "motion_score": 0.2,
+    //                 "agitation_peak": 1.3, "tier": 2, "child_feeling": "better",
+    //                 "lat": …, "lng": …, "accuracy_m": 12 } ] }
     JsonDocument doc;
     JsonArray events = doc["events"].to<JsonArray>();
     char started_at[24], ended_at[24];
     for (int i = 0; i < n; i++) {
-        if (!to_iso(batch[i].started_ms, started_at, sizeof(started_at))) return;  // retry once the clock is set
+        const Event &b = batch[i];
+        if (!net_iso_time(b.started_ms, started_at, sizeof(started_at))) return;  // retry once the clock is set
         JsonObject e = events.add<JsonObject>();
-        e["trigger"] = batch[i].trigger;
-        if (batch[i].command_id[0]) e["command_id"] = batch[i].command_id;
-        else                        e["command_id"] = nullptr;
+        e["trigger"] = b.trigger;
+        if (b.command_id[0]) e["command_id"] = b.command_id;
+        else                 e["command_id"] = nullptr;
         e["started_at"] = started_at;
-        if (batch[i].ended && to_iso(batch[i].ended_ms, ended_at, sizeof(ended_at))) e["ended_at"] = ended_at;
-        else                                                                         e["ended_at"] = nullptr;
-        if (batch[i].scene_id[0]) e["scene_id"] = batch[i].scene_id;
-        e["noise_db"]     = nullptr;  // filled in once the noise module exists
-        e["motion_score"] = nullptr;  // filled in once the motion module exists
+        if (b.ended && net_iso_time(b.ended_ms, ended_at, sizeof(ended_at))) e["ended_at"] = ended_at;
+        else                                                                 e["ended_at"] = nullptr;
+        if (b.scene_id[0]) e["scene_id"] = b.scene_id;
+        if (isnan(b.noise_db)) e["noise_db"] = nullptr;
+        else                   e["noise_db"] = round2(b.noise_db);
+        e["motion_score"] = round2(b.motion);
+        if (b.ended) {
+            if (b.agitation_peak >= 0) e["agitation_peak"] = round2(b.agitation_peak);
+            if (b.tier >= 1) e["tier"] = b.tier;  // events.tier is 1-3; 0 = left out
+            if (b.child_feeling[0]) e["child_feeling"] = b.child_feeling;
+        }
+        if (b.has_fix) {
+            e["lat"]        = serialized(String(b.fix.lat, 6));  // full precision, not float's 7 digits
+            e["lng"]        = serialized(String(b.fix.lng, 6));
+            e["accuracy_m"] = round2(b.fix.accuracy_m);
+        }
     }
 
     String body, response;

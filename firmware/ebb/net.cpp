@@ -2,6 +2,7 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <time.h>
+#include <sys/time.h>
 #include "net.h"
 #include "config.h"
 #include "secrets.h"
@@ -99,6 +100,26 @@ bool net_connected()
 bool net_clock_ready()
 {
     return time(nullptr) > 1700000000;  // after Nov 2023, so not the 1970 boot clock
+}
+
+// The boot time (real clock minus millis) is worked out once and reused, so
+// the same millis() always gives the same string. Recomputing it each call
+// could round to a different second, and the server matches a session's start
+// and end reports by started_at.
+bool net_iso_time(uint32_t ms, char *out, size_t len)
+{
+    static int64_t boot_epoch_ms = 0;
+    if (boot_epoch_ms == 0) {
+        struct timeval tv;
+        gettimeofday(&tv, nullptr);
+        if (tv.tv_sec < 1700000000) return false;  // still 1970: NTP hasn't answered yet
+        boot_epoch_ms = (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000 - (int64_t)millis();
+    }
+    time_t t = (time_t)((boot_epoch_ms + ms) / 1000);
+    struct tm tm;
+    gmtime_r(&t, &tm);
+    strftime(out, len, "%Y-%m-%dT%H:%M:%SZ", &tm);
+    return true;
 }
 
 static bool is_https()

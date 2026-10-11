@@ -109,3 +109,17 @@ bool scenes_next(Scene &out)
     taskEXIT_CRITICAL(&set_mux);
     return true;
 }
+
+bool scenes_find(const char *id, Scene &out)
+{
+    bool found = false;
+    taskENTER_CRITICAL(&set_mux);
+    for (int i = 0; i < set_count && !found; i++) {
+        if (strcmp(set[i].id, id) == 0) {
+            out = set[i];
+            found = true;
+        }
+    }
+    taskEXIT_CRITICAL(&set_mux);
+    return found;
+}

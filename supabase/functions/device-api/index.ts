@@ -38,6 +38,36 @@
 //      play order). Empty when none is approved yet: the watch then uses the
 //      calm profile's theme and sound. Events may carry "scene_id" back.
 //
+// Adaptive Ebb additions (docs/adaptive-contract.md). All additive: older
+// firmware ignores the new response fields and never sends the new ones.
+//
+// GET /poll also returns
+//   "settings":   { "auto_motion", "auto_noise", "motion_k", "noise_k", "gps_enabled" }
+//                 (null when the watch is not paired to a child)
+//   "scene_pick": scene id from this week's approved set, chosen by Thompson
+//                 sampling (adaptive.ts pickScene); null when there is no set.
+//   If either lookup fails the poll still answers (that field is null),
+//   because the commands in the reply are already claimed.
+//
+// POST /status may also carry
+//   "agitation": 0.42, "tier": 1,
+//   "samples": [ { "at", "motion", "noise_db", "motion_z", "noise_z", "agitation" } ]
+//   -> devices.agitation / agitation_at / tier; samples (newest 60, each "at"
+//      within 10 minutes of now, values clamped) -> sensor_samples.
+//   Reply adds "samples_saved". Samples also refresh the outcome of sessions
+//   that ended in the last 5 minutes (the after-window fills in late).
+//
+// POST /events items may also carry agitation_peak, tier (1-3),
+//   child_feeling ("better" | "same" | "worse"), lat, lng, accuracy_m.
+//   An item with ended_at gets its outcome computed (before/after/recovery).
+//   lat/lng become one "calm" pin in locations, only when the parent has
+//   turned GPS on. Invalid optional values are dropped, never fail the batch.
+//
+// POST /location  { "points": [ { "at", "lat", "lng", "accuracy_m" } ] }  (<= 20)
+//   -> { "saved": n }, or 204 with no body when GPS is off / not paired
+//      (points are dropped, not stored). Points older than 24 h, more than
+//      10 min in the future, or exactly 0,0 (no fix) are skipped.
+//
 // Pairing (no Authorization header: the watch has no token yet)
 // POST /functions/v1/device-api/pair/start   { "hardware_id": "…" }
 //   -> { "code": "<20 chars>", "secret": "<64 hex>", "expires_in": 900 }
@@ -56,6 +86,7 @@
 // It uses the service role key, which bypasses RLS and never leaves Supabase.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { computeEventOutcome, pickScene } from "./adaptive.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -122,6 +153,67 @@ function numberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function clampedOrNull(value: unknown, min: number, max: number): number | null {
+  const n = numberOrNull(value);
+  return n === null ? null : Math.max(min, Math.min(max, n));
+}
+
+// A whole number in [min, max], else null (the column has a check constraint,
+// and a rejected row would fail the whole batch).
+function intInRange(value: unknown, min: number, max: number): number | null {
+  const n = numberOrNull(value);
+  return n !== null && Number.isInteger(n) && n >= min && n <= max ? n : null;
+}
+
+const FEELINGS = new Set(["better", "same", "worse"]);
+const MAX_SAMPLES = 60;
+const MAX_POINTS = 20;
+const SAMPLE_SKEW_MS = 10 * 60_000;
+const POINT_MAX_AGE_MS = 24 * 3_600_000;
+const OUTCOME_REFRESH_MS = 5 * 60_000;
+
+type Fix = { lat: number; lng: number; accuracy_m: number | null };
+
+function fixOrNull(raw: Record<string, unknown>): Fix | null {
+  const lat = numberOrNull(raw.lat);
+  const lng = numberOrNull(raw.lng);
+  if (lat === null || lng === null) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  if (lat === 0 && lng === 0) return null;  // GPS modules report 0,0 before a fix
+  return { lat, lng, accuracy_m: clampedOrNull(raw.accuracy_m, 0, 100_000) };
+}
+
+type Settings = {
+  auto_motion: boolean;
+  auto_noise: boolean;
+  motion_k: number;
+  noise_k: number;
+  gps_enabled: boolean;
+};
+
+async function childSettings(childId: string): Promise<Settings | null> {
+  const { data, error } = await supabase
+    .from("child_settings")
+    .select("auto_motion, auto_noise, motion_k, noise_k, gps_enabled")
+    .eq("child_id", childId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function gpsEnabled(childId: string): Promise<boolean> {
+  return (await childSettings(childId))?.gps_enabled === true;
+}
+
+async function safeOutcome(eventId: string, deviceId: string): Promise<void> {
+  try {
+    await computeEventOutcome(supabase, eventId);
+  } catch (err) {
+    const e = err as { name?: string; code?: string };
+    console.error("outcome failed", deviceId, e?.name ?? "Error", e?.code ?? "");
+  }
+}
+
 async function poll(device: Device, url: URL): Promise<Response> {
   const since = new Date(Date.now() - COMMAND_MAX_AGE_MS).toISOString();
 
@@ -159,7 +251,20 @@ async function poll(device: Device, url: URL): Promise<Response> {
 
   await supabase.from("devices").update({ last_seen_at: new Date().toISOString() }).eq("id", device.id);
 
-  return json({ commands, profile });
+  // The commands above are already claimed, so these extras must never turn
+  // the reply into an error: on failure the field is just null.
+  let settings: Settings | null = null;
+  let scenePick: string | null = null;
+  if (device.child_id) {
+    const childId = device.child_id;
+    const [s, p] = await Promise.allSettled([childSettings(childId), pickScene(supabase, childId)]);
+    if (s.status === "fulfilled") settings = s.value;
+    else console.error("poll settings failed", device.id);
+    if (p.status === "fulfilled") scenePick = p.value;
+    else console.error("poll scene_pick failed", device.id);
+  }
+
+  return json({ commands, profile, settings, scene_pick: scenePick });
 }
 
 async function events(device: Device, req: Request): Promise<Response> {
@@ -173,6 +278,7 @@ async function events(device: Device, req: Request): Promise<Response> {
 
   let saved = 0;
   let lastCalmActive: boolean | null = null;
+  let gps: boolean | null = null;  // child_settings.gps_enabled, read once per batch
 
   for (const raw of body.events as Record<string, unknown>[]) {
     const trigger = raw?.trigger;
@@ -199,7 +305,7 @@ async function events(device: Device, req: Request): Promise<Response> {
       }
     }
 
-    const row = {
+    const row: Record<string, unknown> = {
       device_id: device.id,
       child_id: device.child_id,
       trigger,
@@ -210,6 +316,13 @@ async function events(device: Device, req: Request): Promise<Response> {
       motion_score: numberOrNull(raw.motion_score),
       scene_id: typeof raw.scene_id === "string" && SCENE_ID_RE.test(raw.scene_id) ? raw.scene_id : null,
     };
+    // Adaptive fields: only set when sent, so an end report without them never
+    // wipes what the start report stored.
+    const peak = clampedOrNull(raw.agitation_peak, 0, 10);
+    if (peak !== null) row.agitation_peak = peak;
+    const tier = intInRange(raw.tier, 1, 3);
+    if (tier !== null) row.tier = tier;
+    if (typeof raw.child_feeling === "string" && FEELINGS.has(raw.child_feeling)) row.child_feeling = raw.child_feeling;
 
     const { error } = endedAt
       // End report: create the session if the start never arrived, else fill ended_at.
@@ -223,6 +336,48 @@ async function events(device: Device, req: Request): Promise<Response> {
     }
     saved++;
     lastCalmActive = !endedAt;
+
+    // Outcome and calm pin are extras: a failure is logged, the event stays saved.
+    const fix = fixOrNull(raw);
+    if (device.child_id && (endedAt || fix)) {
+      try {
+        const { data: ev, error: idErr } = await supabase
+          .from("events")
+          .select("id")
+          .eq("device_id", device.id)
+          .eq("started_at", startedAt)
+          .maybeSingle();
+        if (idErr) throw idErr;
+        if (ev) {
+          if (endedAt) await safeOutcome(ev.id, device.id);
+          if (fix) {
+            gps ??= await gpsEnabled(device.child_id);
+            if (gps) {
+              // One pin per session, even if the watch resends the report.
+              const { count } = await supabase
+                .from("locations")
+                .select("id", { count: "exact", head: true })
+                .eq("event_id", ev.id)
+                .eq("kind", "calm");
+              if (!count) {
+                const { error: lErr } = await supabase.from("locations").insert({
+                  child_id: device.child_id,
+                  device_id: device.id,
+                  event_id: ev.id,
+                  at: startedAt,
+                  ...fix,
+                  kind: "calm",
+                });
+                if (lErr) throw lErr;
+              }
+            }
+          }
+        }
+      } catch (err) {
+        const e = err as { name?: string; code?: string };
+        console.error("event extras failed", device.id, e?.name ?? "Error", e?.code ?? "");
+      }
+    }
   }
 
   if (lastCalmActive !== null) {
@@ -247,9 +402,86 @@ async function status(device: Device, req: Request): Promise<Response> {
   if (battery !== null) update.battery_pct = Math.max(0, Math.min(100, Math.round(battery)));
   if (typeof body.firmware_version === "string") update.firmware_version = body.firmware_version.slice(0, 32);
 
+  // Live agitation readings (samples only when paired to a child).
+  const now = Date.now();
+  const samples: Record<string, unknown>[] = [];
+  if (device.child_id && Array.isArray(body.samples)) {
+    for (const raw of body.samples as Record<string, unknown>[]) {
+      if (!raw || typeof raw !== "object") continue;
+      const at = isoOrNull(raw.at);
+      if (!at || Math.abs(Date.parse(at) - now) > SAMPLE_SKEW_MS) continue;
+      samples.push({
+        child_id: device.child_id,
+        device_id: device.id,
+        at,
+        motion: clampedOrNull(raw.motion, 0, 1),
+        noise_db: clampedOrNull(raw.noise_db, 0, 160),
+        motion_z: clampedOrNull(raw.motion_z, -100, 100),
+        noise_z: clampedOrNull(raw.noise_z, -100, 100),
+        agitation: clampedOrNull(raw.agitation, 0, 10),
+      });
+    }
+    // Newest 60.
+    samples.sort((a, b) => (a.at as string).localeCompare(b.at as string));
+    samples.splice(0, Math.max(0, samples.length - MAX_SAMPLES));
+  }
+
+  const latestSample = samples.findLast((s) => s.agitation !== null);
+  const agitation = clampedOrNull(body.agitation, 0, 10) ?? (latestSample?.agitation as number | undefined) ?? null;
+  if (agitation !== null) {
+    update.agitation = agitation;
+    update.agitation_at = new Date(now).toISOString();
+  }
+  const tier = clampedOrNull(body.tier, 0, 3);
+  if (tier !== null) update.tier = Math.round(tier);
+
   const { error } = await supabase.from("devices").update(update).eq("id", device.id);
   if (error) throw error;
-  return json({ ok: true });
+
+  let samplesSaved = 0;
+  if (samples.length) {
+    const { error: sErr } = await supabase.from("sensor_samples").insert(samples);
+    if (sErr) {
+      // Telemetry: log and keep the ok reply, so old and new firmware behave alike.
+      console.error("samples insert failed", device.id, sErr.code ?? "");
+    } else {
+      samplesSaved = samples.length;
+      // A session's "after" window (and recovery) is only known once the
+      // samples that follow its end arrive, so refresh recently ended ones.
+      const { data: recent } = await supabase
+        .from("events")
+        .select("id")
+        .eq("device_id", device.id)
+        .gte("ended_at", new Date(now - OUTCOME_REFRESH_MS).toISOString())
+        .limit(3);
+      for (const ev of recent ?? []) await safeOutcome(ev.id, device.id);
+    }
+  }
+  return json({ ok: true, samples_saved: samplesSaved });
+}
+
+async function location(device: Device, req: Request): Promise<Response> {
+  const body = await readJson(req);
+  if (!body || !Array.isArray(body.points)) return json({ error: "points must be an array" }, 400);
+  // GPS off (or not paired): accept and drop, so the watch stops retrying.
+  if (!device.child_id || !(await gpsEnabled(device.child_id))) return new Response(null, { status: 204 });
+
+  const now = Date.now();
+  const rows: Record<string, unknown>[] = [];
+  for (const raw of (body.points as Record<string, unknown>[]).slice(0, MAX_POINTS)) {
+    if (!raw || typeof raw !== "object") continue;
+    const at = isoOrNull(raw.at);
+    const fix = fixOrNull(raw);
+    if (!at || !fix) continue;
+    const t = Date.parse(at);
+    if (t > now + SAMPLE_SKEW_MS || t < now - POINT_MAX_AGE_MS) continue;
+    rows.push({ child_id: device.child_id, device_id: device.id, at, ...fix, kind: "trail" });
+  }
+  if (rows.length) {
+    const { error } = await supabase.from("locations").insert(rows);
+    if (error) throw error;
+  }
+  return json({ saved: rows.length });
 }
 
 async function voice(device: Device): Promise<Response> {
@@ -394,6 +626,7 @@ Deno.serve(async (req) => {
     if (route === "poll" && req.method === "GET") return await poll(device, url);
     if (route === "events" && req.method === "POST") return await events(device, req);
     if (route === "status" && req.method === "POST") return await status(device, req);
+    if (route === "location" && req.method === "POST") return await location(device, req);
     if (route === "voice" && req.method === "GET") return await voice(device);
     if (route === "scenes" && req.method === "GET") return await scenes(device);
     return json({ error: "not found" }, 404);

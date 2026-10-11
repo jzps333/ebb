@@ -19,6 +19,10 @@ int net_download(const String &url, const char *dest_path);
 
 // True once NTP has set the real time (needed before any HTTPS call).
 bool net_clock_ready();
+
+// Turns a millis() timestamp into "2026-10-10T18:22:01Z" using the clock NTP
+// set. Returns false until the clock has been set. Network task only.
+bool net_iso_time(uint32_t ms, char *out, size_t len);
 bool net_connected();      // also kicks a reconnect if WiFi has been down a while
 
 // path is appended to API_BASE_URL, e.g. "/device-api/poll?profile_version=0".

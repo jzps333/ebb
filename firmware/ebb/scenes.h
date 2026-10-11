@@ -14,3 +14,4 @@ struct Scene {
 void scenes_begin();                 // main loop at boot: load the set saved in flash
 void scenes_sync();                  // network task: fetch the approved set every few minutes
 bool scenes_next(Scene &out);        // main loop: next scene in rotation; false if no set
+bool scenes_find(const char *id, Scene &out);  // any task: that scene if it is in this week's set

@@ -9,6 +9,9 @@
 #include "media.h"
 #include "voice.h"
 #include "scenes.h"
+#include "settings.h"
+#include "telemetry.h"
+#include "gps.h"
 
 enum CommandType : uint8_t { CMD_START_CALM, CMD_STOP_CALM };
 
@@ -24,7 +27,10 @@ static volatile int      last_http_code = 0;
 static volatile uint32_t last_poll_ms   = 0;
 
 
-// Parses: { "commands": [ { "id": "…", "type": "start_calm" } ], "profile": null }
+// Parses: { "commands": [ { "id": "…", "type": "start_calm" } ], "profile": null,
+//           "settings": { "auto_motion": true, "auto_noise": false, "motion_k": 2.5,
+//                         "noise_k": 2.5, "gps_enabled": false },
+//           "scene_pick": "ocean_rain" }
 static void parse_poll_response(const String &body)
 {
     JsonDocument doc;
@@ -56,6 +62,8 @@ static void parse_poll_response(const String &body)
         serializeJson(doc["profile"], json);
         profile_store_save_json(json);  // then media_sync fetches its video and sound
     }
+    // Adaptive settings (saved to flash when they change) and the server's scene pick.
+    settings_apply_poll(doc["settings"], doc["scene_pick"]);
 }
 
 static void poll_task(void *arg)
@@ -84,6 +92,8 @@ static void poll_task(void *arg)
             } else if (code != -100 && code != -102) {  // WiFi / clock not ready yet: not worth logging
                 Serial.printf("[commands] poll failed: %d %s\n", code, body.c_str());
             }
+            telemetry_flush();  // POST /status: live agitation + samples, every ~5 s
+            gps_flush();        // POST /location: trail points, only if any are queued
         }
 
         // Keep a steady 3 s rhythm even if the request itself took a while.

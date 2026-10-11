@@ -30,10 +30,21 @@ Screen upside down or sideways? Change `SCREEN_ROTATION` in `ebb/config.h` (0–
 | `net` | WiFi + HTTP(S) to device-api | built |
 | `commands` | Polls `device-api/poll` every 3 s, runs start/stop | built |
 | `event_log` | Posts session start/end; queues offline | built |
-| `profile_store` | Saves approved profile in flash | stub |
-| `motion`, `noise`, `trigger_rules` | Automatic triggers | stub |
+| `profile_store` | Saves approved profile in flash | built |
+| `scenes` | Weekly scene set; prefers poll's `scene_pick` if it is in the set | built |
+| `motion` | BMA423 at 25 Hz: energy x periodicity (0.5-3 Hz) score 0..1, main loop | built |
+| `noise` | PDM mic RMS -> approx dB on its own task; audio never kept | built |
+| `agitation` | Per-child baseline (NVS), z-scores, tiers 0-3, haptic cue, auto-start, cooldown | built |
+| `settings` | Poll's `settings` (auto_motion/noise, k, gps) + `scene_pick`, saved in flash | built |
+| `telemetry` | POST `/status` every ~5 s: agitation, tier, samples, battery | built |
+| `checkin` | 10 s "How do you feel now?" faces after calm -> `child_feeling` | built |
+| `gps` | Opt-in fix + 5-min trail -> POST `/location` (no-op without GPS) | built |
 | `ui` | Themed home screen, "I need calm" / "I'm OK" | stub |
 | `sounds.h` | Audio clips in program memory | stub |
+
+Serial keys: `s` start calm, `x` stop, `v` voice test, `u` unpair, `a` print live
+motion/noise/z/agitation/tier, `g` simulate high motion agitation for 20 s (auto-starts
+calm after ~12 s even if auto_motion is off, unless in the 2-min cooldown).
 
 ## Testing without the backend
 `tools/mock_device_api.py` pretends to be device-api over plain HTTP on your network, with the exact JSON from the plan:

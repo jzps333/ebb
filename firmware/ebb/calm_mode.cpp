@@ -7,6 +7,11 @@
 #include "audio_player.h"
 #include "voice.h"
 #include "scenes.h"
+#include "settings.h"
+#include "agitation.h"
+#include "checkin.h"
+#include "motion.h"
+#include "noise.h"
 
 // Calm mode follows the approved calm profile (profile_store):
 //   theme          -> looping scene video in the background (/video/<theme>.gif)
@@ -55,6 +60,12 @@ static CalmProfile        profile;
 static const BreathStep  *steps = NULL;
 static size_t             step_count = 0;
 static size_t             step_index = 0;
+
+// The session that just ended, held until the check-in is answered so its
+// end report can carry child_feeling.
+static uint32_t ended_ms   = 0;
+static float    ended_peak = 0;
+static int      ended_tier = 0;
 
 // The parent's voice, quietly, between breaths. The scene sound pauses for
 // the clip and comes back after it.
@@ -190,9 +201,30 @@ void calm_mode_init()
     lv_timer_pause(voice_timer);
 }
 
+// The check-in answered (or timed out): now the end report can go.
+static void checkin_done(const char *feeling)
+{
+    event_log_ended(ended_ms, feeling, ended_peak, ended_tier);
+}
+
+// The server's pick (Thompson sampling over what helped this child) if it is
+// in this week's set, otherwise the next scene in the rotation.
+static bool choose_scene(Scene &out)
+{
+    char pick[sizeof(out.id)];
+    if (settings_scene_pick(pick, sizeof(pick)) && scenes_find(pick, out)) {
+        Serial.printf("[calm_mode] server's scene pick %s\n", pick);
+        return true;
+    }
+    return scenes_next(out);
+}
+
 void start_calm(const char *trigger, const char *command_id)
 {
     if (running || !calm_scr) return;
+    // A new session during the last one's check-in: close it unanswered
+    // (sends that session's end report) and return to the home screen first.
+    if (checkin_active()) checkin_finish_now();
     running = true;
 
     profile = profile_store_get();
@@ -202,10 +234,11 @@ void start_calm(const char *trigger, const char *command_id)
     // theme and sound. Breathing, vibration, colours, message and volume
     // always come from the profile.
     Scene scene;
-    bool from_set = scenes_next(scene);
+    bool from_set = choose_scene(scene);
     const char *video = from_set ? scene.video : profile.theme;
     const char *sound = from_set ? scene.sound : profile.sound;
-    event_log_started(trigger, command_id, from_set ? scene.id : "");
+    agitation_session_started();
+    event_log_started(trigger, command_id, from_set ? scene.id : "", motion_score(), noise_db());
     limit_timer = lv_timer_create(limit_timer_cb, CALM_MAX_MS, NULL);
     if (from_set) Serial.printf("[calm_mode] scene %s\n", scene.id);
 
@@ -265,12 +298,15 @@ void stop_calm()
     }
     lv_timer_pause(step_timer);
     lv_timer_pause(voice_timer);
-    event_log_ended();
+    ended_ms = millis();
+    agitation_session_ended(ended_peak, ended_tier);  // also starts the 2-min cooldown
 
     lv_anim_del(circle, size_cb);
     audio_stop();
     watch.stop();  // cut any vibration still playing
-    if (prev_scr) lv_scr_load(prev_scr);
+    // "How do you feel now?" for 10 s, then back to whatever was showing.
+    // The end report goes out when it closes (checkin_done).
+    checkin_show(prev_scr ? prev_scr : lv_scr_act(), checkin_done);
 
     // The GIF decoder holds a full-screen buffer; free it between sessions.
     if (backdrop) {

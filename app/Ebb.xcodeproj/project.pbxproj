@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		01E1D3C6B900799A56CD898D /* DesktopView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CA4474473343E5E64657462 /* DesktopView.swift */; };
 		089D962CF8053E04C8DB8D4D /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 924BB9B4B603DF7D24459180 /* Theme.swift */; };
+		220A6211A17F0BCF3C622BBC /* LiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BBE7C3B4B357F02C5F088C5 /* LiveView.swift */; };
 		2525FAF1F7DC8B51265582FC /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CA0B2CD0C92B5F3CF3B8030 /* Config.swift */; };
 		36E2441EA9D2E9E48F49D2C8 /* EbbApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED5CA223F4EFCA52A1C5DB4B /* EbbApp.swift */; };
 		4F05662AC9174AD8C4E7B1C9 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1993824FB0E8887853F8C371 /* QRScannerView.swift */; };
@@ -17,8 +18,10 @@
 		7FD00734AC4CE03C44444C85 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D7DFDFDF3369EF270DAC3510 /* Assets.xcassets */; };
 		80F72F1B11719DF71A4AA429 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100B18614FCEECE78AB428E /* HomeView.swift */; };
 		813CB8AFCE10E22E73149B06 /* ScenesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3021060DF83CD175072B3CDD /* ScenesView.swift */; };
+		931F94E0E999F38F7882D388 /* LocationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47CF1A5F755E7C93523E92DB /* LocationView.swift */; };
 		933AA46E4B502533D12DFD3C /* VoiceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE6C86881385D5F886B0C207 /* VoiceView.swift */; };
 		AAD520A30D167C11C4567DFF /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01DFA7BD92DB28B55C251156 /* LoginView.swift */; };
+		C1C8E760339F56FC8D0A5753 /* InsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25E81F2F8CC5A860DC9225B /* InsightsView.swift */; };
 		C3C8320E925F9777E323C303 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C233FAEB373C24F203BBB5 /* AppModel.swift */; };
 		D569A223FCB24EA5D2A9A201 /* AssessmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D580F65A45449959E70B3C64 /* AssessmentView.swift */; };
 		F34A37361E1214EDE985B097 /* CalmProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84075EAA5C1A66C8565EA053 /* CalmProfileView.swift */; };
@@ -27,9 +30,11 @@
 
 /* Begin PBXFileReference section */
 		01DFA7BD92DB28B55C251156 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		0BBE7C3B4B357F02C5F088C5 /* LiveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveView.swift; sourceTree = "<group>"; };
 		0CA4474473343E5E64657462 /* DesktopView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopView.swift; sourceTree = "<group>"; };
 		1993824FB0E8887853F8C371 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		3021060DF83CD175072B3CDD /* ScenesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenesView.swift; sourceTree = "<group>"; };
+		47CF1A5F755E7C93523E92DB /* LocationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationView.swift; sourceTree = "<group>"; };
 		84075EAA5C1A66C8565EA053 /* CalmProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalmProfileView.swift; sourceTree = "<group>"; };
 		8516F308A385E28E8444DCBD /* PairView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairView.swift; sourceTree = "<group>"; };
 		8CA0B2CD0C92B5F3CF3B8030 /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
@@ -37,6 +42,7 @@
 		924BB9B4B603DF7D24459180 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		A100B18614FCEECE78AB428E /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		A1C233FAEB373C24F203BBB5 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		C25E81F2F8CC5A860DC9225B /* InsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightsView.swift; sourceTree = "<group>"; };
 		CC2604493591535B7C9C79FC /* Ebb.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Ebb.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D580F65A45449959E70B3C64 /* AssessmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssessmentView.swift; sourceTree = "<group>"; };
 		D7DFDFDF3369EF270DAC3510 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -83,6 +89,9 @@
 				0CA4474473343E5E64657462 /* DesktopView.swift */,
 				ED5CA223F4EFCA52A1C5DB4B /* EbbApp.swift */,
 				A100B18614FCEECE78AB428E /* HomeView.swift */,
+				C25E81F2F8CC5A860DC9225B /* InsightsView.swift */,
+				0BBE7C3B4B357F02C5F088C5 /* LiveView.swift */,
+				47CF1A5F755E7C93523E92DB /* LocationView.swift */,
 				01DFA7BD92DB28B55C251156 /* LoginView.swift */,
 				8D369C2595ACC2B42995E7FD /* Models.swift */,
 				8516F308A385E28E8444DCBD /* PairView.swift */,
@@ -177,6 +186,9 @@
 				01E1D3C6B900799A56CD898D /* DesktopView.swift in Sources */,
 				36E2441EA9D2E9E48F49D2C8 /* EbbApp.swift in Sources */,
 				80F72F1B11719DF71A4AA429 /* HomeView.swift in Sources */,
+				C1C8E760339F56FC8D0A5753 /* InsightsView.swift in Sources */,
+				220A6211A17F0BCF3C622BBC /* LiveView.swift in Sources */,
+				931F94E0E999F38F7882D388 /* LocationView.swift in Sources */,
 				AAD520A30D167C11C4567DFF /* LoginView.swift in Sources */,
 				68BDDBA5FB68F7758193E342 /* Models.swift in Sources */,
 				763CE23A2E4133D4C2D19555 /* PairView.swift in Sources */,

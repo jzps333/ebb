@@ -92,6 +92,85 @@ Times in the browser's local time; days follow child_day_summary.day.
      vibration) plus calm_message and parent_summary. Read-only here; it is set in the iPhone app.
    Parents cannot write journal entries, only questions.
 
+## Adaptive Ebb (new: the watch senses rising agitation and learns per child)
+All of this already exists in the database. Do NOT create or alter tables, columns, policies,
+views or functions, and do not write SQL migrations. Only read these, call these RPCs, and do
+the few updates listed.
+
+New tables and columns (public schema):
+- child_settings (one row per child): child_id, auto_motion, auto_noise (watch may start calm by
+  itself), motion_k, noise_k (sensitivity, learned; lower = calm starts sooner; read-only),
+  gps_enabled, gps_consent_at, updated_at.
+  Parents may update only auto_motion, auto_noise, gps_enabled, gps_consent_at.
+  gps_enabled = true requires gps_consent_at in the SAME update
+  (e.g. { gps_enabled: true, gps_consent_at: new Date().toISOString() }), else the update fails.
+- devices adds: agitation (0..1+, 1 = the auto-start line), agitation_at, tier
+  (0 settled, 1 rising = breathing cue on the wrist, 2 calm mode, 3 needs an adult).
+- sensor_samples: id, child_id, device_id, at, motion (0..1), noise_db, motion_z, noise_z, agitation.
+  One row per watch reading (about every 5 s); only the last 2 days are kept.
+- events adds: false_alarm (teachers set true/false on motion/noise starts), agitation_peak,
+  tier (highest tier reached, 1-3), child_feeling ('better' | 'same' | 'worse', the child's
+  check-in on the watch), agitation_before, agitation_after (mean over 60 s before start /
+  after end), recovery_seconds (start -> back under 0.5).
+- sensitivity_log: id, child_id, event_id, at, signal ('motion' | 'noise'), old_k, new_k,
+  reason ('false alarm' | 'helped'). Written by the database when teachers rate.
+- weekly_insights: id, child_id, week_start (Monday), stats (jsonb), report (jsonb:
+  headline, patterns[], what_helps[], suggestions[], risk_windows[{ day, from, to, why }]),
+  model, created_by, created_at. Written only by the insights function (read it, never insert).
+- locations: id, child_id, device_id, event_id, at, lat, lng, accuracy_m, kind ('trail' | 'calm').
+  RLS: the parent always sees their child's points; a linked teacher sees only points recorded
+  in school hours (Mon-Fri 08:00-15:00 New York) and only while it is school hours now.
+
+RPCs (supabase.rpc; each checks access itself and returns nothing for other children):
+- scene_stats({ p_child_id }) -> rows { scene_id, title, bucket ('all' | 'morning' | 'afternoon'
+  | 'evening'), helped, not_helped, mean, low, high } (mean = chance it helps, low/high = 90% band)
+- child_pattern_stats({ p_child_id, p_days: 28 }) -> jsonb { days, total, heatmap: [{ dow 1=Mon..7,
+  hour 0-23, count }], by_trigger: { <trigger>: { count, helped, not_helped, false_alarms } },
+  avg_minutes, avg_agitation_peak, busiest: { dow, hour, count } } (hours are New York time)
+- risk_forecast({ p_child_id, p_hours: 8 }) -> rows { hour_start, expected, risk (0..1), level
+  ('low' | 'medium' | 'high') } for each coming hour
+- Edge function: supabase.functions.invoke('insights', { body: { child_id } }) -> the new
+  weekly_insights row (it replaces this week's row). Takes ~5-20 s. Errors come back as
+  { error: "..." }; 502 means the AI failed (show "Couldn't write the report, try again"),
+  503 means AI not set up.
+
+Features to build:
+1. Live agitation board (teacher class page and parent overview): per student a soft gauge or
+   bar of devices.agitation with the tier as words ("Settled", "Rising, breathing cue on",
+   "Calming", "Needs an adult"), plus a 10-minute sparkline from sensor_samples (latest first,
+   at >= now - 10 min). Subscribe with Realtime to UPDATE on devices and INSERT on
+   sensor_samples (filter child_id=eq.<id>) and update live. Tier 3 shows a gentle but clear
+   banner "<nickname> may need an adult". Treat agitation older than 60 s as "no recent reading".
+2. Insights page (/teacher/child/:id/insights and /parent/child/:id/insights):
+   - Heatmap: weekday (Mon-Fri, plus weekend if any data) x hour (7-18) from
+     child_pattern_stats.heatmap, with a text summary of the busiest time.
+   - Scene effectiveness: horizontal bars of mean per scene (bucket 'all' by default, a
+     morning/afternoon/evening switch), with the low-high 90% band drawn as a whisker and
+     "n ratings" = helped + not_helped. Grey out scenes with 0 ratings ("not tried yet").
+   - Risk forecast: the next 8 hours as a row of chips coloured by level, with time labels.
+   - AI report: the newest weekly_insights row (headline, patterns, what helps, suggestions,
+     risk windows) with "Written <date> by AI. Check it against what you see." and a
+     "Generate insights" button that calls the insights function, shows a spinner, then
+     renders the returned row.
+   - Outcomes: for recent calm moments show before -> after agitation, recovery time and the
+     child's check-in face (better / same / worse).
+3. Sensitivity learning log (on the insights page): list from sensitivity_log, e.g.
+   "Movement sensitivity 2.5 -> 2.8 after a false alarm (Tue 10:14)", plus the current
+   motion_k / noise_k from child_settings explained as "lower = calm starts sooner".
+   Teachers get a "False alarm" toggle next to each motion/noise calm moment (update
+   events.false_alarm), beside the existing "Did it help?" rating.
+4. Parent settings (/parent/child/:id/settings): switches for "Start calm automatically when
+   movement rises" (auto_motion) and "... when the room gets loud" (auto_noise).
+5. GPS map, parents (/parent/child/:id/map): a consent card explaining that the watch will
+   record its location every 5 minutes and at each calm moment, kept for 30 days, visible to
+   the parent and to linked teachers in school hours only. Toggle on = update { gps_enabled:
+   true, gps_consent_at: now }; toggle off = { gps_enabled: false } (the watch stops sending).
+   The map (Leaflet + OpenStreetMap tiles) shows the trail (kind 'trail', a line for the
+   chosen day) and calm pins (kind 'calm', linking to the calm moment). Default to today.
+6. GPS map, teachers: same map read-only, no toggle; only show the tab during school hours
+   (Mon-Fri 08:00-15:00 America/New_York) and explain "Location is only shown in school hours".
+   Outside those hours RLS returns no rows anyway.
+
 ## Look and feel
 - Calm and soft: off-white background (#F7F9F8), deep teal primary (#1F7A7A), sky accent (#7FB7D6),
   warm sand for highlights (#F2E3C6), muted red only for errors. Plenty of white space.
@@ -104,6 +183,10 @@ Times in the browser's local time; days follow child_day_summary.day.
 
 ## Do not
 - Do not add Start calm / Stop buttons (iPhone app only).
-- Do not create or alter tables, policies or functions, or use a service-role key.
-- Do not show GPS or location yet (coming later as its own feature).
+- Do not create or alter tables, columns, policies, views or functions, write migrations,
+  or use a service-role key. Everything above already exists.
+- Do not insert into weekly_insights, sensor_samples, sensitivity_log or locations (the
+  backend writes them), and do not update motion_k / noise_k.
+- Do not show location to teachers outside school hours, and never show the map to a parent
+  before they have given consent.
 ````

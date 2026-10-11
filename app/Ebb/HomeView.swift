@@ -91,6 +91,7 @@ struct AccountMenu: View {
                 VStack(alignment: .leading, spacing: 14) {
                     Text(model.profile?.displayName ?? "").font(.title2).foregroundStyle(Ebb.ink)
                     Text(model.profile?.isTeacher == true ? "Teacher" : "Parent").foregroundStyle(Ebb.inkSoft)
+                    PhoneLinkSection()
                     Button("ebb Desktop") {
                         isShowing = false
                         model.showingDesktop = true
@@ -152,7 +153,11 @@ struct ChildCard: View {
             }
 
             VStack(spacing: 0) {
+                LinkRow(title: "Live agitation") { LiveView(child: child) }
+                Divider()
                 LinkRow(title: "Calm moments today") { MomentsView(child: child) }
+                Divider()
+                LinkRow(title: "Patterns & insights") { InsightsView(child: child) }
                 Divider()
                 LinkRow(title: "This week's scenes") { ScenesView(child: child) }
                 if !isTeacher {
@@ -167,6 +172,8 @@ struct ChildCard: View {
                     Divider()
                     LinkRow(title: "Your voice on the watch") { VoiceView(child: child) }
                 }
+                Divider()
+                LinkRow(title: "Location") { LocationView(child: child) }
             }
         }
     }
@@ -174,7 +181,9 @@ struct ChildCard: View {
     private var statusText: String {
         guard let device else { return "No watch" }
         if busy { return "Command submitting" }
+        if device.currentTier == 3 { return "Needs an adult" }
         if device.calmActive { return "Calm mode on" }
+        if device.currentTier == 1 && device.isOnline { return "Agitation rising" }
         return device.isOnline ? "Watch online" : "Watch offline"
     }
 
@@ -212,7 +221,7 @@ struct AlertBanner: View {
     var body: some View {
         if let text = model.banner {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "water.waves")
+                Image(systemName: model.bannerIcon)
                 Text(text).font(.subheadline)
             }
             .foregroundStyle(Ebb.chipText)
@@ -240,8 +249,9 @@ struct LatestMomentRow: View {
             Text("Last calm moment").font(.caption).foregroundStyle(Ebb.inkSoft)
             Text(AppModel.describe(moment, sceneTitle: model.sceneTitle(moment.sceneId)))
                 .font(.subheadline).foregroundStyle(Ebb.ink)
+            MomentOutcome(moment: moment)
             RatingControl(moment: moment, canRate: canRate)
-            if canRate && moment.helped != nil {
+            if canRate && (moment.helped != nil || moment.falseAlarm == true) {
                 Button("Add a journal note →") { writing = true }
                     .font(.subheadline)
                     .foregroundStyle(Ebb.teal)
@@ -281,25 +291,62 @@ private struct NoteLoader: View {
     }
 }
 
+/// Measured outcome of a calm moment, when the watch reported one.
+struct MomentOutcome: View {
+    @Environment(AppModel.self) private var model
+    let moment: CalmMoment
+
+    var body: some View {
+        let name = model.children.first { $0.id == moment.childId }?.nickname ?? "Child"
+        if let text = AppModel.outcome(moment, name: name) {
+            Text(text).font(.footnote).foregroundStyle(Ebb.inkSoft)
+        }
+    }
+}
+
 /// Thumbs for the teacher until rated; afterwards the rating, for everyone.
+/// Auto-starts (movement / loud room) also get "False alarm", which makes
+/// that signal less sensitive.
 struct RatingControl: View {
     @Environment(AppModel.self) private var model
     let moment: CalmMoment
     let canRate: Bool
 
     var body: some View {
-        if let helped = moment.helped {
+        if moment.falseAlarm == true {
+            StatusChip(text: "False alarm")
+        } else if let helped = moment.helped {
             StatusChip(text: helped ? "Helped" : "Didn't help")
         } else if canRate {
-            HStack(spacing: 10) {
-                Text("Did it help?").font(.subheadline).foregroundStyle(Ebb.ink)
-                Spacer()
-                thumb("hand.thumbsup", helped: true)
-                thumb("hand.thumbsdown", helped: false)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    Text("Did it help?").font(.subheadline).foregroundStyle(Ebb.ink)
+                    Spacer()
+                    thumb("hand.thumbsup", helped: true)
+                    thumb("hand.thumbsdown", helped: false)
+                    if moment.isAutoStart { falseAlarmButton }
+                }
+                if moment.isAutoStart {
+                    Text("False alarm = the watch started calm when nothing was wrong.")
+                        .font(.caption).foregroundStyle(Ebb.inkSoft)
+                }
             }
         } else {
             Text("Not rated yet").font(.footnote).foregroundStyle(Ebb.inkSoft)
         }
+    }
+
+    private var falseAlarmButton: some View {
+        Button { Task { await model.markFalseAlarm(moment) } } label: {
+            Text("False alarm")
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(Ebb.teal)
+                .padding(.horizontal, 10)
+                .frame(height: 40)
+                .background(Ebb.card, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Ebb.cardBorder, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     private func thumb(_ icon: String, helped: Bool) -> some View {
@@ -334,6 +381,7 @@ struct MomentsView: View {
             ForEach(moments) { m in
                 EbbCard(title: m.startedAt.formatted(date: .omitted, time: .shortened)) {
                     Text(AppModel.describe(m, sceneTitle: model.sceneTitle(m.sceneId))).foregroundStyle(Ebb.ink)
+                    MomentOutcome(moment: m)
                     RatingControl(moment: m, canRate: isTeacher)
                     if let note = notes[m.id] {
                         InsetPanel {
@@ -429,6 +477,44 @@ struct JournalNoteSheet: View {
                 }
             }
             .onAppear { text = existing?.body ?? "" }
+        }
+    }
+}
+
+/// Account menu: link a mobile number so the adult can text Ebb (Photon iMessage).
+private struct PhoneLinkSection: View {
+    @Environment(AppModel.self) private var model
+    @State private var phone = ""
+    @State private var code = ""
+    @State private var sent = false
+    @State private var busy = false
+    @State private var linked: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let number = linked ?? model.phone {
+                Label("Texting Ebb from \(number)", systemImage: "message")
+                    .font(.subheadline).foregroundStyle(Ebb.teal)
+            } else if sent {
+                TextField(text: $code, prompt: Text(verbatim: "6-digit code")) { Text("Code") }
+                    .textContentType(.oneTimeCode).keyboardType(.numberPad).ebbField()
+                Button(busy ? "Checking..." : "Confirm number") {
+                    Task {
+                        busy = true
+                        if await model.confirmPhone(AppModel.e164(phone), code: code) { linked = AppModel.e164(phone) }
+                        busy = false
+                    }
+                }
+                .buttonStyle(.ebbPrimary).disabled(busy || code.count < 6)
+            } else {
+                FieldLabel(text: "Text Ebb from your phone")
+                TextField(text: $phone, prompt: Text(verbatim: "(919) 555-0100")) { Text("Mobile number") }
+                    .textContentType(.telephoneNumber).keyboardType(.phonePad).ebbField()
+                Button(busy ? "Sending..." : "Add phone") {
+                    Task { busy = true; sent = await model.addPhone(AppModel.e164(phone)); busy = false }
+                }
+                .buttonStyle(.ebbSecondary).disabled(busy || phone.filter(\.isNumber).count < 10)
+            }
         }
     }
 }
